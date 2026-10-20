@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OtoReader</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<script src="fflate.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- ===== Library ===== -->
+<div id="app">
+  <header class="bar">
+    <button id="menuBtn" class="iconBtn" title="Menu">&#9776;</button>
+    <h1 id="shelfTitle">Reading Now</h1>
+    <input id="search" type="search" placeholder="Search" autocomplete="off">
+    <select id="sort" title="Sort">
+      <option value="recent">Recently read</option>
+      <option value="newest">Newest files first</option>
+      <option value="title">Title</option>
+      <option value="author">Author</option>
+    </select>
+    <button id="refreshBtn" class="iconBtn" title="Reload from Google Drive">&#8635;</button>
+    <button id="accountBtn" class="textBtn">Sign in</button>
+  </header>
+
+  <nav id="drawer" class="hidden">
+    <div class="drawerHead">OtoReader</div>
+    <div id="drawerItems"></div>
+  </nav>
+  <div id="scrim" class="hidden"></div>
+
+  <main id="main">
+    <section id="setup" class="panel hidden">
+      <h2>One-time setup</h2>
+      <p>OtoReader reads the same Google Drive folder your phone syncs to. Google requires a free <b>OAuth client ID</b> before any website may open your Drive. It takes about five minutes:</p>
+      <ol>
+        <li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a> and create a project called <b>OtoReader</b>.</li>
+        <li><b>APIs &amp; Services → Library</b>: search for <b>Google Drive API</b> and press <b>Enable</b>.</li>
+        <li><b>APIs &amp; Services → OAuth consent screen</b>: choose <b>External</b>, app name <b>OtoReader</b>, your email twice, Save. Under <b>Test users</b> add your own Gmail address.</li>
+        <li><b>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</b>: type <b>Web application</b>, and under <b>Authorized JavaScript origins</b> add exactly:
+          <code id="originBox"></code> <button id="copyOrigin" class="textBtn small">Copy</button></li>
+        <li>Press Create and copy the <b>Client ID</b> (it ends with <code>.apps.googleusercontent.com</code>) into the box below.</li>
+      </ol>
+      <input id="clientIdInput" type="text" placeholder="Paste the Client ID here" spellcheck="false">
+      <button id="saveClientId" class="primary">Save and sign in</button>
+      <p class="muted">Or read a book from this computer without Google Drive: <button id="openLocal" class="textBtn">Open a file…</button></p>
+    </section>
+
+    <section id="notice" class="panel hidden"></section>
+
+    <div id="list"></div>
+    <div id="sentinel"></div>
+  </main>
+
+  <footer id="status" class="hidden"></footer>
+  <input id="fileInput" type="file" accept=".epub,.txt,.pdf" hidden>
+</div>
+
+<!-- ===== Reader ===== -->
+<div id="reader" class="hidden">
+  <header class="bar readerBar" id="readerTop">
+    <button id="backBtn" class="iconBtn" title="Back to library">&#8592;</button>
+    <div class="titles"><div id="rTitle"></div><div id="rChapter" class="muted"></div></div>
+    <button id="ttsBtn" class="iconBtn" title="Read aloud">&#127911;</button>
+    <button id="tocBtn" class="iconBtn" title="Contents">&#9776;</button>
+    <button id="displayBtn" class="iconBtn" title="Text and colours">Aa</button>
+  </header>
+  <div id="frameWrap">
+    <iframe id="frame" title="Book"></iframe>
+    <div id="tapLeft" class="tapZone"></div>
+    <div id="tapRight" class="tapZone"></div>
+    <div id="loading" class="hidden">Loading…</div>
+  </div>
+  <footer class="bar readerBar" id="readerBottom">
+    <button id="prevBtn" class="iconBtn">&#8249;</button>
+    <input id="progress" type="range" min="0" max="1000" value="0">
+    <span id="pageInfo"></span>
+    <button id="nextBtn" class="iconBtn">&#8250;</button>
+  </footer>
+
+  <aside id="toc" class="side hidden"><div class="sideHead">Contents <button class="iconBtn closeSide">&times;</button></div><div id="tocItems"></div></aside>
+
+  <aside id="display" class="side hidden">
+    <div class="sideHead">Text and colours <button class="iconBtn closeSide">&times;</button></div>
+    <label>Colours
+      <select id="optTheme"><option value="0">Light</option><option value="1">Sepia</option><option value="2">Dark</option><option value="3">Black</option></select></label>
+    <label>Font size <input id="optSize" type="range" min="70" max="200" step="5"> <span id="optSizeV"></span>%</label>
+    <label>Font <select id="optFont"><option value="0">Book font</option><option value="1">Serif</option><option value="2">Sans-serif</option></select></label>
+    <label>Line spacing <input id="optLine" type="range" min="10" max="24" step="1"></label>
+    <label>Margins <input id="optMargin" type="range" min="8" max="120" step="4"></label>
+    <label><input id="optPaged" type="checkbox"> Pages (off = scrolling)</label>
+    <label><input id="optJustify" type="checkbox"> Justify text</label>
+  </aside>
+
+  <aside id="ttsPanel" class="side hidden">
+    <div class="sideHead">Read aloud <button class="iconBtn closeSide">&times;</button></div>
+    <div class="row"><button id="ttsPlay" class="primary">Play</button><button id="ttsStop" class="textBtn">Stop</button></div>
+    <label>Speed <input id="ttsRate" type="range" min="0.5" max="5" step="0.1"> <span id="ttsRateV"></span>×</label>
+    <label>Voice <select id="ttsVoice"></select></label>
+    <p class="muted">Uses the voices built into this browser. Chrome has Google voices; pick a female one from the list.</p>
+  </aside>
+</div>
+
+<div id="dialog" class="hidden"><div class="dialogBox"><div id="dialogBody"></div><div class="row right"><button id="dialogCancel" class="textBtn">Cancel</button><button id="dialogOk" class="primary">Save</button></div></div></div>
+
+<script src="config.js"></script>
+<script src="reader.bundle.js"></script>
+<script src="drive.js"></script>
+<script src="epub.js"></script>
+<script src="tts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
