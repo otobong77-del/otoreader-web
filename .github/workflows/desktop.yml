@@ -1,0 +1,38 @@
+name: Desktop installer
+
+# Builds the Windows installer (OtoReader-Setup.exe) and attaches it to the "desktop-latest" release:
+# https://github.com/otobong77-del/otoreader-web/releases/download/desktop-latest/OtoReader-Setup.exe
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OtoReader-Setup
+          path: desktop/out/OtoReader-Setup.exe
+          if-no-files-found: error
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: OtoReader for Windows (latest build)
+          prerelease: true
+          body: "Download OtoReader-Setup.exe and open it. Windows may show 'Windows protected your PC': click More info, then Run anyway. The installer puts OtoReader on the desktop and in the Start menu."
+          files: desktop/out/OtoReader-Setup.exe

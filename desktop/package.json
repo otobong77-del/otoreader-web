@@ -1,0 +1,34 @@
+{
+  "name": "otoreader-desktop",
+  "productName": "OtoReader",
+  "version": "1.0.0",
+  "description": "OtoReader for the desktop: your ebook library, synced with your phone through Google Drive.",
+  "main": "main.js",
+  "private": true,
+  "author": "otobong77-del",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "app.otoreader.desktop",
+    "productName": "OtoReader",
+    "artifactName": "OtoReader-Setup.${ext}",
+    "directories": { "output": "out" },
+    "files": ["main.js", "preload.js", "build/icon.png"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "OtoReader",
+      "runAfterFinish": true
+    }
+  }
+}
