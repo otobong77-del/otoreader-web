@@ -338,7 +338,7 @@
   async function openBook(b) {
     if (!b.file) { setStatus('This book has not been uploaded from the phone yet. On the phone, Settings → Sync now (with "copy book files" on).', 6000); return; }
     var ext = b.name.toLowerCase().split('.').pop();
-    if (['epub', 'txt', 'pdf'].indexOf(ext) < 0) { setStatus(b.format + ' books can be read on the phone for now; the web version opens EPUB, TXT and PDF.', 6000); return; }
+    if (!Books.canOpen(b.name)) { setStatus(b.format + ' books can be read on the phone for now; here: EPUB, Kindle (MOBI, AZW, AZW3), Word (DOCX), TXT and PDF.', 6000); return; }
     showReader(); $('loading').classList.remove('hidden'); $('loading').textContent = 'Downloading…';
     try {
       var buf = await idbGet('files', b.file.id);

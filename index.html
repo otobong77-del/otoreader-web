@@ -61,7 +61,7 @@
   </main>
 
   <footer id="status" class="hidden"></footer>
-  <input id="fileInput" type="file" accept=".epub,.txt,.pdf" hidden>
+  <input id="fileInput" type="file" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx" hidden>
 </div>
 
 <!-- ===== Reader ===== -->
@@ -115,6 +115,7 @@
 <script src="reader.bundle.js"></script>
 <script src="drive.js"></script>
 <script src="epub.js"></script>
+<script src="formats.js"></script>
 <script src="tts.js"></script>
 <script src="app.js"></script>
 <script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(function () {});</script>
