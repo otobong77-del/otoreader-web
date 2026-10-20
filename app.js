@@ -42,7 +42,7 @@
   function touch(b) { var e = entryOf(b); e.updated = Date.now(); dirty[b.fp] = 1; scheduleSave(); saveCache(); }
 
   // ---------- persistence ----------
-  function saveCache() { try { localStorage.setItem('oto.lib', JSON.stringify(lib)); } catch (e) {} }
+  function saveCache() { try { var t = JSON.stringify(lib); if (t.length < 4000000) localStorage.setItem('oto.lib', t); else localStorage.removeItem('oto.lib'); } catch (e) {} }
   function loadCache() { try { var c = JSON.parse(localStorage.getItem('oto.lib') || 'null'); if (c && c.entries) lib = c; } catch (e) {} }
 
   var saveTimer = null;
@@ -110,8 +110,9 @@
       var found = await Drive.findLibrary();
       if (!found) { showNotice('No synced library yet. On the phone open OtoReader → Settings → <b>Google Drive sync</b>, choose a folder in the Drive app, and press <b>Sync now</b>. Then press ⟳ here.'); setStatus('', 0); return; }
       lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId;
-      setStatus('Reading library.json…');
+      setStatus('Reading the library file (this can take a minute for a big library)…');
       var remote = parseLibrary(await Drive.text(found.fileId));
+      setStatus('Sorting ' + Object.keys(remote.entries).length + ' books…');
       for (var fp in remote.entries) lib.entries[fp] = dirty[fp] ? mergeEntry(lib.entries[fp], remote.entries[fp]) : remote.entries[fp];
       if (found.booksId) {
         setStatus('Listing book files…');
