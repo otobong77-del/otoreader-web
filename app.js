@@ -338,7 +338,7 @@
   async function openBook(b) {
     if (!b.file) { setStatus('This book has not been uploaded from the phone yet. On the phone, Settings → Sync now (with "copy book files" on).', 6000); return; }
     var ext = b.name.toLowerCase().split('.').pop();
-    if (!Books.canOpen(b.name)) { setStatus(b.format + ' books can be read on the phone for now; here: EPUB, Kindle (MOBI, AZW, AZW3), Word (DOCX), TXT and PDF.', 6000); return; }
+    if (!Books.canOpen(b.name)) { setStatus(b.format + ' books can be read on the phone for now; here: EPUB, Kindle (MOBI, AZW, AZW3), Word (DOCX), FB2, RTF, ODT, comics (CBZ, CBR), TXT and PDF.', 6000); return; }
     showReader(); $('loading').classList.remove('hidden'); $('loading').textContent = 'Downloading…';
     try {
       var buf = await idbGet('files', b.file.id);
@@ -347,7 +347,7 @@
         if (buf.byteLength < 40 * 1048576) idbPut('files', b.file.id, buf);
       }
       if (ext === 'pdf') { showPdf(b, buf); return; }
-      await startDocument(b, Books.open(buf, b.name));
+      await startDocument(b, await Books.open(buf, b.name));
     } catch (e) {
       $('loading').classList.add('hidden');
       alert('Could not open the book: ' + e.message);
@@ -361,7 +361,7 @@
       var b = { fp: fingerprint(file.name, file.size), name: file.name, title: stem(file.name), author: '', format: formatOf(file.name), size: file.size, file: null, entry: null, local: true };
       local = b;
       if (ext === 'pdf') { showPdf(b, buf); return; }
-      return startDocument(b, Books.open(buf, file.name));
+      return Promise.resolve(Books.open(buf, file.name)).then(function (d) { return startDocument(b, d); });
     }).catch(function (e) { $('loading').classList.add('hidden'); alert('Could not open the file: ' + e.message); hideReader(); });
   }
   function showPdf(b, buf) {

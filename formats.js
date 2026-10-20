@@ -1,4 +1,4 @@
-/* formats.js — Kindle (MOBI / AZW / AZW3) and Word (DOCX) in the browser, ported from the phone app's parsers. */
+/* formats.js — Kindle (MOBI / AZW / AZW3), Word (DOCX), FictionBook (FB2), RTF, OpenDocument (ODT) and comics (CBZ, CBR) in the browser, ported from the phone app's parsers. */
 (function () {
   'use strict';
   var B = window.Books;
@@ -391,30 +391,392 @@
     var title = null;
     if (files['docProps/core.xml']) { try { var core = new DOMParser().parseFromString(dec.decode(files['docProps/core.xml']), 'application/xml'); var t = byLocal(core.documentElement, 'title')[0]; if (t && t.textContent.trim()) title = t.textContent.trim(); } catch (e) {} }
     title = title || (name || 'Document').replace(/\.[^.]+$/, '');
-    var CSS = '<style>p{margin:0 0 .6em}h1,h2,h3{margin:1em 0 .4em}table{border-collapse:collapse}td,th{border:1px solid #999;padding:2px 6px}img{max-width:100%}</style>';
+    return assemble(title, blocks, headings, resources);
+  };
+
+  // ---------- shared assembly for Word-like documents (DOCX, ODT) ----------
+  var DOC_CSS = '<style>p{margin:0 0 .6em}h1,h2,h3{margin:1em 0 .4em}table{border-collapse:collapse}td,th{border:1px solid #999;padding:2px 6px}img{max-width:100%}ul{margin:0 0 .6em}</style>';
+  function assemble(title, blocks, headings, resources) {
     var cuts = headings.filter(function (h) { return h.level <= 2 && h.block > 0; }).map(function (h) { return h.block; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     var pages = [];
     if (!cuts.length) {
-      paginate(blocks, 60000).forEach(function (pg, i) { pages.push({ label: 'Part ' + (i + 1), html: CSS + pg }); });
+      paginate(blocks, 60000).forEach(function (pg, i) { pages.push({ label: 'Part ' + (i + 1), html: DOC_CSS + pg }); });
       headings.forEach(function (h) { for (var i = 0; i < pages.length; i++) if (pages[i].html.indexOf(blocks[h.block]) >= 0) { if (pages[i].label.indexOf('Part') === 0) pages[i].label = h.label; break; } });
     } else {
       var starts = [0].concat(cuts);
       starts.forEach(function (start, i) {
         var end = i + 1 < starts.length ? starts[i + 1] : blocks.length;
         var h = headings.filter(function (x) { return x.block >= start && x.block < end; })[0];
-        pages.push({ label: h ? h.label : 'Part ' + (i + 1), html: CSS + blocks.slice(start, end).join('\n'), depth: h ? Math.min(3, h.level - 1) : 0 });
+        pages.push({ label: h ? h.label : 'Part ' + (i + 1), html: DOC_CSS + blocks.slice(start, end).join('\n'), depth: h ? Math.min(3, h.level - 1) : 0 });
       });
     }
     return new MemoryBook(title, [], pages, resources, null);
+  }
+  function mimeForImage(name) {
+    return { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' }[(name || '').split('.').pop().toLowerCase()] || 'application/octet-stream';
+  }
+  function isImageName(name) { return /\.(jpe?g|png|gif|webp|bmp)$/i.test(name || ''); }
+  function naturalCompare(a, b) {
+    var ax = a.toLowerCase().split(/(\d+)/), bx = b.toLowerCase().split(/(\d+)/);
+    for (var i = 0; i < Math.max(ax.length, bx.length); i++) {
+      var x = ax[i] || '', y = bx[i] || '';
+      if (x === y) continue;
+      var nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+      if (nx && ny) { var d = parseInt(x, 10) - parseInt(y, 10); if (d) return d; continue; }
+      return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+  function xmlText(bytes) {
+    // honour the encoding named in the XML declaration (FB2 files are often windows-1251)
+    var head = latin(bytes, 0, Math.min(bytes.length, 200));
+    var m = /encoding=["']([\w.-]+)["']/i.exec(head);
+    var enc = m ? m[1].toLowerCase() : 'utf-8';
+    if (bytes.length > 1 && bytes[0] === 0xFF && bytes[1] === 0xFE) enc = 'utf-16le';
+    else if (bytes.length > 1 && bytes[0] === 0xFE && bytes[1] === 0xFF) enc = 'utf-16be';
+    var text;
+    try { text = new TextDecoder(enc).decode(bytes); } catch (e) { text = new TextDecoder('utf-8').decode(bytes); }
+    return text.replace(/^﻿/, '').replace(/^(\s*<\?xml[^>]*?)\sencoding=["'][^"']*["']/i, '$1');
+  }
+  function parseXml(text, what) {
+    var doc = new DOMParser().parseFromString(text, 'application/xml');
+    var err = doc.getElementsByTagName('parsererror')[0];
+    if (err || !doc.documentElement) throw new Error('Could not read ' + what + ': ' + (err ? err.textContent.replace(/\s+/g, ' ').substring(0, 120) : 'empty document'));
+    return doc;
+  }
+  function firstLocal(el, name) { var all = el.getElementsByTagName('*'); for (var i = 0; i < all.length; i++) if (all[i].localName === name) return all[i]; return null; }
+
+  // ---------- FictionBook 2 ----------
+  var FB2_CSS = '<style>p{text-indent:1.2em;margin:0 0 .4em}.poem p{text-indent:0;margin:0}.stanza{margin:.6em 0}.epigraph{margin-left:2em;font-style:italic}.text-author{text-align:right;font-style:italic}blockquote{margin:.6em 1.5em}h2,h3,h4{text-align:center}.subtitle{text-align:center;font-weight:bold}img{max-width:100%}.image{text-align:center}</style>';
+  function b64bytes(s) {
+    var bin = atob(s.replace(/[^A-Za-z0-9+/=]/g, ''));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  B.Fb2 = function (buffer, name) {
+    var bytes = new Uint8Array(buffer);
+    if (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4B) { // .fb2.zip
+      var files = fflate.unzipSync(bytes), inner = Object.keys(files).filter(function (k) { return /\.fb2$/i.test(k); })[0] || Object.keys(files)[0];
+      if (!inner) throw new Error('The zip holds no FB2 file');
+      bytes = files[inner];
+    }
+    var doc = parseXml(xmlText(bytes), 'FB2');
+    var root = doc.documentElement;
+    var description = firstLocal(root, 'description');
+    var titleInfo = description && firstLocal(description, 'title-info');
+    var bt = titleInfo && firstLocal(titleInfo, 'book-title');
+    var title = (bt && bt.textContent.trim()) || (name || 'Book').replace(/\.fb2(\.zip)?$|\.[^.]+$/i, '');
+    var authors = [];
+    if (titleInfo) childNamed(titleInfo, 'author').forEach(function (a) {
+      var parts = ['first-name', 'middle-name', 'last-name'].map(function (n) { var e = childNamed(a, n)[0]; return e ? e.textContent.trim() : ''; }).filter(Boolean);
+      var s = parts.join(' ') || (childNamed(a, 'nickname')[0] ? childNamed(a, 'nickname')[0].textContent.trim() : '');
+      if (s) authors.push(s);
+    });
+    var resources = {};
+    childNamed(root, 'binary').forEach(function (bin) {
+      var id = bin.getAttribute('id'); if (!id) return;
+      try { resources[id] = { mime: bin.getAttribute('content-type') || mimeForImage(id), bytes: b64bytes(bin.textContent) }; } catch (e) {}
+    });
+    var cover = null;
+    var cp = titleInfo && firstLocal(titleInfo, 'coverpage');
+    if (cp) { var ci = firstLocal(cp, 'image'); if (ci) cover = localAttr(ci, 'href').replace(/^#/, ''); }
+    if (cover && !resources[cover]) cover = null;
+
+    var idToPage = {};
+    function inlineText(el) { return el.textContent.replace(/\s+/g, ' ').trim(); }
+    function image(n) {
+      var id = localAttr(n, 'href').replace(/^#/, '');
+      return resources[id] ? '<div class="image"><img src="r/' + esc(id) + '" alt=""/></div>\n' : '';
+    }
+    function inline(el) {
+      var sb = '';
+      for (var n = el.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3 || n.nodeType === 4) sb += esc(n.nodeValue);
+        else if (n.nodeType === 1) {
+          var tag = { emphasis: 'em', strong: 'strong', strikethrough: 's', sub: 'sub', sup: 'sup', code: 'code' }[n.localName];
+          if (tag) sb += '<' + tag + '>' + inline(n) + '</' + tag + '>';
+          else if (n.localName === 'a') sb += '<a href="' + esc(localAttr(n, 'href')) + '">' + inline(n) + '</a>';
+          else if (n.localName === 'image') sb += image(n);
+          else sb += inline(n);
+        }
+      }
+      return sb;
+    }
+    function block(el, depth, pageIndex) {
+      var sb = '';
+      if (el.getAttribute('id')) idToPage[el.getAttribute('id')] = pageIndex;
+      childEls(el).forEach(function (n) {
+        var id = n.getAttribute('id') || '';
+        if (id) idToPage[id] = pageIndex;
+        var idAttr = id ? ' id="' + esc(id) + '"' : '';
+        switch (n.localName) {
+          case 'title': {
+            var h = 'h' + Math.min(depth + 1, 4), ps = childNamed(n, 'p');
+            sb += '<' + h + idAttr + '>';
+            if (ps.length) ps.forEach(function (p) { sb += inline(p) + '<br/>'; }); else sb += esc(inlineText(n));
+            sb += '</' + h + '>\n'; break;
+          }
+          case 'subtitle': sb += '<p class="subtitle"' + idAttr + '>' + inline(n) + '</p>\n'; break;
+          case 'p': case 'v': sb += '<p' + idAttr + '>' + inline(n) + '</p>\n'; break;
+          case 'text-author': sb += '<p class="text-author"' + idAttr + '>' + inline(n) + '</p>\n'; break;
+          case 'empty-line': sb += '<br/>\n'; break;
+          case 'section': sb += '<div class="section"' + idAttr + '>' + block(n, depth + 1, pageIndex) + '</div>\n'; break;
+          case 'epigraph': sb += '<div class="epigraph"' + idAttr + '>' + block(n, depth, pageIndex) + '</div>\n'; break;
+          case 'cite': sb += '<blockquote' + idAttr + '>' + block(n, depth, pageIndex) + '</blockquote>\n'; break;
+          case 'poem': sb += '<div class="poem"' + idAttr + '>' + block(n, depth, pageIndex) + '</div>\n'; break;
+          case 'stanza': sb += '<div class="stanza">' + block(n, depth, pageIndex) + '</div>\n'; break;
+          case 'annotation': sb += '<div class="annotation"' + idAttr + '>' + block(n, depth, pageIndex) + '</div>\n'; break;
+          case 'image': sb += image(n); break;
+          case 'table':
+            sb += '<table' + idAttr + '>';
+            childNamed(n, 'tr').forEach(function (tr) {
+              sb += '<tr>';
+              childEls(tr).forEach(function (c) { var t = c.localName === 'th' ? 'th' : 'td'; sb += '<' + t + '>' + inline(c) + '</' + t + '>'; });
+              sb += '</tr>';
+            });
+            sb += '</table>\n'; break;
+          case 'date': sb += '<p class="date">' + esc(inlineText(n)) + '</p>\n'; break;
+          default: sb += block(n, depth, pageIndex);
+        }
+      });
+      return sb;
+    }
+    var pages = [];
+    childNamed(root, 'body').forEach(function (body) {
+      var bname = body.getAttribute('name') || '';
+      var isNotes = bname === 'notes' || bname === 'comments' || bname === 'footnotes';
+      var bt2 = childNamed(body, 'title')[0], bodyTitle = bt2 ? inlineText(bt2) : null;
+      var sections = childNamed(body, 'section');
+      if (!sections.length || isNotes) {
+        var label = bodyTitle || (isNotes ? 'Notes' : title);
+        pages.push({ label: label, html: FB2_CSS + block(body, 1, pages.length), depth: 0 });
+      } else {
+        sections.forEach(function (sec) {
+          var pageIndex = pages.length, st = childNamed(sec, 'title')[0];
+          var label = st ? inlineText(st) : 'Chapter ' + (pageIndex + 1);
+          pages.push({ label: label, html: FB2_CSS + block(sec, 1, pageIndex), depth: bodyTitle ? 1 : 0 });
+        });
+      }
+    });
+    if (!pages.length) throw new Error('The FB2 file has no text');
+    pages.forEach(function (p, i) {
+      p.html = p.html.replace(/href="#([^"]+)"/g, function (m, id) { var t = idToPage[id]; return (t == null || t === i) ? m : 'href="#"'; });
+    });
+    return new MemoryBook(title, authors, pages, resources, cover);
+  };
+
+  // ---------- Rich Text Format ----------
+  var RTF_SKIP = {};
+  'fonttbl colortbl stylesheet info pict object header footer headerl headerr footerl footerr footnote xe tc field fldinst listtable listoverridetable revtbl rsidtbl generator themedata colorschememapping latentstyles datastore xmlnstbl mmathPr pntext'.split(' ').forEach(function (w) { RTF_SKIP[w] = true; });
+  function rtfBlocks(bytes) {
+    var decoder = new TextDecoder('windows-1252');
+    var blocks = [], para = '', stack = [], pending = [];
+    var st = { bold: false, italic: false, underline: false, skip: false, uc: 1 };
+    var openB = false, openI = false, openU = false;
+    var i = 0, n = bytes.length;
+    function flushBytes() { if (pending.length) { para += esc(decoder.decode(new Uint8Array(pending))); pending = []; } }
+    function syncFormat() {
+      flushBytes();
+      if (openU && !st.underline) { para += '</u>'; openU = false; }
+      if (openI && !st.italic) { para += '</i>'; openI = false; }
+      if (openB && !st.bold) { para += '</b>'; openB = false; }
+      if (!openB && st.bold) { para += '<b>'; openB = true; }
+      if (!openI && st.italic) { para += '<i>'; openI = true; }
+      if (!openU && st.underline) { para += '<u>'; openU = true; }
+    }
+    function closeFormat() { flushBytes(); if (openU) { para += '</u>'; openU = false; } if (openI) { para += '</i>'; openI = false; } if (openB) { para += '</b>'; openB = false; } }
+    function endParagraph() { closeFormat(); var t = para.trim(); if (t) blocks.push('<p>' + t + '</p>'); para = ''; }
+    function text(s) { if (st.skip) return; syncFormat(); para += esc(s); }
+    function isLetter(c) { return (c >= 65 && c <= 90) || (c >= 97 && c <= 122); }
+    function isDigit(c) { return c >= 48 && c <= 57; }
+    while (i < n) {
+      var c = bytes[i];
+      if (c === 123) { stack.push(st); st = { bold: st.bold, italic: st.italic, underline: st.underline, skip: st.skip, uc: st.uc }; i++; }
+      else if (c === 125) { flushBytes(); st = stack.pop() || { bold: false, italic: false, underline: false, skip: false, uc: 1 }; if (!st.skip) syncFormat(); i++; }
+      else if (c === 92) {
+        i++; if (i >= n) break;
+        var d = bytes[i];
+        if (d === 39) { // \'hh
+          if (i + 2 < n) { var v = parseInt(latin(bytes, i + 1, 2), 16); if (!isNaN(v) && !st.skip) { syncFormat(); pending.push(v); } i += 3; } else i = n;
+        }
+        else if (d === 42) { st.skip = true; i++; }
+        else if (d === 126) { text(' '); i++; }
+        else if (d === 45 || d === 95) { i++; }
+        else if (d === 123 || d === 125 || d === 92) { text(String.fromCharCode(d)); i++; }
+        else if (d === 10 || d === 13) { endParagraph(); i++; }
+        else if (isLetter(d)) {
+          var start = i;
+          while (i < n && isLetter(bytes[i])) i++;
+          var word = latin(bytes, start, i - start), numStr = '';
+          if (i < n && (bytes[i] === 45 || isDigit(bytes[i]))) { var ns = i; i++; while (i < n && isDigit(bytes[i])) i++; numStr = latin(bytes, ns, i - ns); }
+          if (i < n && bytes[i] === 32) i++;
+          var num = numStr === '' ? null : parseInt(numStr, 10);
+          switch (word) {
+            case 'par': case 'sect': case 'page': case 'row': if (!st.skip) endParagraph(); break;
+            case 'line': if (!st.skip) { syncFormat(); para += '<br/>'; } break;
+            case 'tab': case 'cell': text('\t'); break;
+            case 'b': st.bold = num !== 0; if (!st.skip) syncFormat(); break;
+            case 'i': st.italic = num !== 0; if (!st.skip) syncFormat(); break;
+            case 'ul': st.underline = num !== 0; if (!st.skip) syncFormat(); break;
+            case 'ulnone': st.underline = false; if (!st.skip) syncFormat(); break;
+            case 'plain': case 'pard': st.bold = st.italic = st.underline = false; if (!st.skip) syncFormat(); break;
+            case 'uc': st.uc = num == null ? 1 : num; break;
+            case 'u': {
+              if (num != null && !st.skip) text(String.fromCodePoint(num < 0 ? num + 65536 : num));
+              var skip = st.uc;
+              while (skip > 0 && i < n) { if (bytes[i] === 92 && i + 1 < n && bytes[i + 1] === 39) i += 4; else i++; skip--; }
+              break;
+            }
+            case 'ansicpg': if (num != null) { try { decoder = new TextDecoder('windows-' + num); } catch (e) {} } break;
+            case 'emdash': text('—'); break;
+            case 'endash': text('–'); break;
+            case 'lquote': text('‘'); break;
+            case 'rquote': text('’'); break;
+            case 'ldblquote': text('“'); break;
+            case 'rdblquote': text('”'); break;
+            case 'bullet': text('•'); break;
+            default: if (RTF_SKIP[word]) st.skip = true;
+          }
+        }
+        else i++;
+      }
+      else if (c === 13 || c === 10) i++;
+      else { if (!st.skip) { syncFormat(); pending.push(c); } i++; }
+    }
+    endParagraph();
+    if (!blocks.length) throw new Error('The RTF file has no readable text');
+    return blocks;
+  }
+  B.Rtf = function (buffer, name) {
+    var blocks = rtfBlocks(new Uint8Array(buffer));
+    var title = (name || 'Document').replace(/\.[^.]+$/, '');
+    var pages = paginate(blocks, 60000).map(function (pg, i) { return { label: 'Part ' + (i + 1), html: DOC_CSS + pg }; });
+    return new MemoryBook(title, [], pages, {}, null);
+  };
+
+  // ---------- OpenDocument text ----------
+  B.Odt = function (buffer, name) {
+    var files = fflate.unzipSync(new Uint8Array(buffer));
+    if (!files['content.xml']) throw new Error('Not an OpenDocument file (content.xml missing)');
+    var doc = parseXml(xmlText(files['content.xml']), 'ODT');
+    var text = firstLocal(doc.documentElement, 'text');
+    if (!text) throw new Error('Document has no text body');
+    var resources = {}, blocks = [], headings = [];
+    function image(el) {
+      var href = localAttr(el, 'href'); if (!href || !files[href]) return '';
+      var key = 'img' + Object.keys(resources).length + '.' + href.split('.').pop();
+      resources[key] = { mime: mimeForImage(href), bytes: files[href] };
+      return '<img src="r/' + key + '" alt=""/>';
+    }
+    function inline(el) {
+      var sb = '';
+      for (var n = el.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3) sb += esc(n.nodeValue);
+        else if (n.nodeType === 1) {
+          switch (n.localName) {
+            case 's': sb += new Array((parseInt(localAttr(n, 'c'), 10) || 1) + 1).join(' '); break;
+            case 'tab': sb += '&#160;&#160;&#160;&#160;'; break;
+            case 'line-break': sb += '<br/>'; break;
+            case 'image': sb += image(n); break;
+            case 'a': sb += '<a href="' + esc(localAttr(n, 'href')) + '">' + inline(n) + '</a>'; break;
+            case 'note': sb += '<sup>' + inline(firstLocal(n, 'note-body') || n) + '</sup>'; break;
+            default: sb += inline(n);
+          }
+        }
+      }
+      return sb;
+    }
+    function walk(el) {
+      childEls(el).forEach(function (n) {
+        switch (n.localName) {
+          case 'h': {
+            var level = Math.min(6, Math.max(1, parseInt(localAttr(n, 'outline-level'), 10) || 1)), content = inline(n), hl = Math.min(level, 4);
+            headings.push({ label: content.replace(/<[^>]+>/g, '').trim(), block: blocks.length, level: level });
+            blocks.push('<h' + hl + '>' + content + '</h' + hl + '>'); break;
+          }
+          case 'p': blocks.push('<p>' + inline(n) + '</p>'); break;
+          case 'list': {
+            var sb = '<ul>';
+            childEls(n).forEach(function (item) { sb += '<li>'; childEls(item).forEach(function (c) { if (c.localName === 'p' || c.localName === 'h') sb += inline(c) + ' '; }); sb += '</li>'; });
+            blocks.push(sb + '</ul>'); break;
+          }
+          case 'table': {
+            var tb = '<table>';
+            byLocal(n, 'table-row').forEach(function (row) {
+              tb += '<tr>';
+              childEls(row).forEach(function (cell) { tb += '<td>'; childEls(cell).forEach(function (p) { tb += inline(p) + '<br/>'; }); tb += '</td>'; });
+              tb += '</tr>';
+            });
+            blocks.push(tb + '</table>'); break;
+          }
+          case 'sequence-decls': case 'soft-page-break': break;
+          default: walk(n);
+        }
+      });
+    }
+    walk(text);
+    var title = null;
+    if (files['meta.xml']) { try { var t = firstLocal(parseXml(xmlText(files['meta.xml']), 'meta').documentElement, 'title'); if (t && t.textContent.trim()) title = t.textContent.trim(); } catch (e) {} }
+    return assemble(title || (name || 'Document').replace(/\.[^.]+$/, ''), blocks, headings, resources);
+  };
+
+  // ---------- Comics (CBZ, CBR) ----------
+  var COMIC_CSS = '<style>html,body{margin:0;padding:0;background:#000}.pg{text-align:center}img{max-width:100%;max-height:100vh;object-fit:contain}</style>';
+  function comicBook(name, entries) { // entries: [{name, bytes}]
+    var list = entries.filter(function (e) { return isImageName(e.name) && e.name.split('/').pop().charAt(0) !== '.'; })
+      .sort(function (a, b) { return naturalCompare(a.name, b.name); });
+    if (!list.length) throw new Error('No images found in the comic archive');
+    var title = (name || 'Comic').replace(/\.[^.]+$/, ''), resources = {}, pages = [];
+    list.forEach(function (e, i) {
+      var key = 'img' + i + '.' + e.name.split('.').pop().toLowerCase();
+      resources[key] = { mime: mimeForImage(e.name), bytes: e.bytes };
+      pages.push({ label: 'Page ' + (i + 1), html: COMIC_CSS + '<div class="pg"><img src="r/' + key + '" alt="page ' + (i + 1) + '"/></div>' });
+    });
+    return new MemoryBook(title, [], pages, resources, 'img0.' + list[0].name.split('.').pop().toLowerCase());
+  }
+  B.Cbz = function (buffer, name) {
+    var files = fflate.unzipSync(new Uint8Array(buffer), { filter: function (f) { return isImageName(f.name); } });
+    return comicBook(name, Object.keys(files).map(function (k) { return { name: k, bytes: files[k] }; }));
+  };
+  var unrarLoading = null;
+  function loadUnrar() {
+    if (window.Unrar) return Promise.resolve(window.Unrar);
+    if (!unrarLoading) unrarLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'unrar.js';
+      s.onload = function () { resolve(window.Unrar); };
+      s.onerror = function () { unrarLoading = null; reject(new Error('Could not load the RAR unpacker (unrar.js)')); };
+      document.head.appendChild(s);
+    });
+    return unrarLoading;
+  }
+  B.Cbr = async function (buffer, name) {
+    var Unrar = await loadUnrar();
+    var extractor = await Unrar.createExtractorFromData({ data: buffer });
+    var entries = [];
+    try {
+      var res = extractor.extract({ files: function (h) { return !h.flags.directory && isImageName(h.name); } });
+      for (var f of res.files) if (f.extraction) entries.push({ name: f.fileHeader.name, bytes: f.extraction });
+    } catch (e) {
+      if (e.reason === 'ERAR_MISSING_PASSWORD' || e.reason === 'ERAR_BAD_PASSWORD') throw new Error('The archive is password protected');
+      throw new Error('Could not open RAR: ' + (e.message || e));
+    }
+    return comicBook(name, entries);
   };
 
   // ---------- dispatch ----------
   var openEpubOrTxt = B.open;
   B.open = function (buffer, name) {
-    var ext = (name || '').toLowerCase().split('.').pop();
+    var lower = (name || '').toLowerCase(), ext = lower.split('.').pop();
     if (ext === 'mobi' || ext === 'azw' || ext === 'azw3' || ext === 'prc') return new B.Mobi(buffer, name);
     if (ext === 'docx') return new B.Docx(buffer, name);
+    if (ext === 'fb2' || /\.fb2\.zip$/.test(lower)) return new B.Fb2(buffer, name);
+    if (ext === 'rtf') return new B.Rtf(buffer, name);
+    if (ext === 'odt') return new B.Odt(buffer, name);
+    if (ext === 'cbz') return new B.Cbz(buffer, name);
+    if (ext === 'cbr' || ext === 'rar') return B.Cbr(buffer, name); // a Promise
     return openEpubOrTxt(buffer, name);
   };
-  B.canOpen = function (name) { return /\.(epub|txt|pdf|mobi|azw|azw3|prc|docx)$/i.test(name || ''); };
+  B.canOpen = function (name) { return /\.(epub|txt|pdf|mobi|azw|azw3|prc|docx|fb2|fb2\.zip|rtf|odt|cbz|cbr)$/i.test(name || ''); };
 })();
