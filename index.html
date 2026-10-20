@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OtoReader</title>
 <link rel="icon" href="icon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#005C75">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="style.css">
 <script src="fflate.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -24,6 +27,7 @@
       <option value="author">Author</option>
     </select>
     <button id="refreshBtn" class="iconBtn" title="Reload from Google Drive">&#8635;</button>
+    <button id="installBtn" class="textBtn hidden" title="Put OtoReader on this computer">Install</button>
     <button id="accountBtn" class="textBtn">Sign in</button>
   </header>
 
@@ -113,5 +117,6 @@
 <script src="epub.js"></script>
 <script src="tts.js"></script>
 <script src="app.js"></script>
+<script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(function () {});</script>
 </body>
 </html>

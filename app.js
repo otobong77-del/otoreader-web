@@ -594,5 +594,13 @@
     var tries = 0;
     (function waitGoogle() { if (window.google && google.accounts) loadFromDrive(false); else if (tries++ < 50) setTimeout(waitGoogle, 200); else showNotice('Google sign-in did not load. Check the connection and reload.'); })();
   }
+  // "Install": Chrome and Edge offer to put the page on the desktop / start menu as its own window
+  var installPrompt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installPrompt = e; $('installBtn').classList.remove('hidden'); });
+  window.addEventListener('appinstalled', function () { $('installBtn').classList.add('hidden'); installPrompt = null; });
+  document.addEventListener('DOMContentLoaded', function () {
+    $('installBtn').onclick = function () { if (installPrompt) { installPrompt.prompt(); } };
+  });
+
   document.addEventListener('DOMContentLoaded', boot);
 })();
