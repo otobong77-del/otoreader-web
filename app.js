@@ -58,6 +58,7 @@
       var text = serializeLibrary(lib.entries);
       await Drive.writeText(lib.fileId, text);
       fps.forEach(function (f) { delete dirty[f]; });
+      try { lib.remoteModified = await Drive.modified(lib.fileId); } catch (e) {}
       setStatus('Saved to Google Drive', 2500);
     } catch (e) {
       setStatus('Could not save: ' + e.message + ' (will retry)', 6000);
@@ -95,8 +96,32 @@
   window.addEventListener('pagehide', function () { if (Object.keys(dirty).length) flush(); });
   document.addEventListener('visibilitychange', function () { if (document.hidden && Object.keys(dirty).length) flush(); });
 
+  // ---------- keeping up with the phone ----------
+  // Every few minutes while the page is visible, and whenever it comes back into view, the
+  // library file's modified time is checked; when the phone (or another browser) wrote it,
+  // the library is read again and redrawn. Local unsaved edits are merged, never lost.
+  var lastCheck = 0, checking = false;
+  async function checkForUpdates(force) {
+    if (checking || !lib.fileId || !Drive.signedIn() || document.hidden) return;
+    var now = Date.now();
+    if (!force && now - lastCheck < 30000) return;
+    lastCheck = now; checking = true;
+    try {
+      var m = await Drive.modified(lib.fileId);
+      if (m && m !== lib.remoteModified) {
+        if (Object.keys(dirty).length) await flush(); // our edits go in first; flush merges the phone's copy
+        await loadFromDrive(true, true);
+        setStatus('Updated with the changes from your phone', 4000);
+      }
+    } catch (e) {
+    } finally { checking = false; }
+  }
+  setInterval(function () { checkForUpdates(false); }, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkForUpdates(false); });
+  window.addEventListener('focus', function () { checkForUpdates(false); });
+
   // ---------- Drive loading ----------
-  async function loadFromDrive(force) {
+  async function loadFromDrive(force, quiet) {
     try {
       await Drive.signIn(false);
     } catch (e) {
@@ -109,7 +134,7 @@
     try {
       var found = await Drive.findLibrary();
       if (!found) { showNotice('No synced library yet. On the phone open OtoReader → Settings → <b>Google Drive sync</b>, choose a folder in the Drive app, and press <b>Sync now</b>. Then press ⟳ here.'); setStatus('', 0); return; }
-      lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId;
+      lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId; lib.remoteModified = found.modified || '';
       setStatus('Reading the library file (this can take a minute for a big library)…');
       var remote = parseLibrary(await Drive.text(found.fileId));
       setStatus('Sorting ' + Object.keys(remote.entries).length + ' books…');
@@ -119,11 +144,12 @@
         var files = await Drive.listBooks(found.booksId);
         lib.files = {};
         files.forEach(function (f) { lib.files[fingerprint(f.name, +f.size || 0)] = { id: f.id, name: f.name, size: +f.size || 0, modifiedTime: f.modifiedTime }; });
+        try { lib.covers = await Drive.listCovers(found.folderId); } catch (e) { lib.covers = lib.covers || {}; }
       }
       lib.loadedAt = Date.now();
       saveCache(); rebuild(); buildDrawer(); render();
       hideNotice();
-      setStatus(books.length + ' books in the synced library', 4000);
+      if (!quiet) setStatus(books.length + ' books in the synced library', 4000);
     } catch (e) {
       setStatus('', 0);
       showNotice('Could not read Google Drive: ' + esc(e.message));
@@ -309,12 +335,28 @@
   }
   function idbGet(store, key) { return idb().then(function (db) { return new Promise(function (res) { var t = db.transaction(store).objectStore(store).get(key); t.onsuccess = function () { res(t.result); }; t.onerror = function () { res(null); }; }); }).catch(function () { return null; }); }
   function idbPut(store, key, val) { return idb().then(function (db) { return new Promise(function (res) { var t = db.transaction(store, 'readwrite'); t.objectStore(store).put(val, key); t.oncomplete = res; t.onerror = res; }); }).catch(function () {}); }
+  var coverQueue = [], coverBusy = 0;
+  function showCover(el, blob) { var img = document.createElement('img'); img.src = URL.createObjectURL(blob); img.alt = ''; el.textContent = ''; el.appendChild(img); }
   function loadCover(b, el) {
     idbGet('covers', b.fp).then(function (blob) {
-      if (!blob) return;
-      var img = document.createElement('img'); img.src = URL.createObjectURL(blob); img.alt = '';
-      el.textContent = ''; el.appendChild(img);
+      if (blob) { showCover(el, blob); return; }
+      var id = lib.covers && lib.covers[b.name + '.jpg'];
+      if (!id || !Drive.signedIn()) return;
+      coverQueue.push({ b: b, el: el, id: id }); pumpCovers();
     });
+  }
+  function pumpCovers() { // a few downloads at a time, only for rows that are on screen
+    while (coverBusy < 4 && coverQueue.length) {
+      var job = coverQueue.shift();
+      if (!document.body.contains(job.el)) continue;
+      coverBusy++;
+      (function (job) {
+        Drive.bytes(job.id).then(function (buf) {
+          var blob = new Blob([buf], { type: 'image/jpeg' });
+          idbPut('covers', job.b.fp, blob); if (document.body.contains(job.el)) showCover(job.el, blob);
+        }).catch(function () {}).then(function () { coverBusy--; pumpCovers(); });
+      })(job);
+    }
   }
 
   // ---------- settings ----------

@@ -120,6 +120,18 @@
     return best;
   };
 
+  /** Modified time of a Drive file, for cheap "did the phone write since?" checks. */
+  D.modified = async function (id) { var r = await D.json('files/' + id + '?fields=modifiedTime'); return r.modifiedTime || ''; };
+
+  /** The Covers folder next to Books: cover pictures the phone uploads, named "<book file name>.jpg". */
+  D.listCovers = async function (folderId) {
+    var dirs = await D.list("'" + folderId + "' in parents and name = 'Covers' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
+    if (!dirs.length) return {};
+    var out = {};
+    (await D.list("'" + dirs[0].id + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", 'id,name')).forEach(function (f) { out[f.name] = f.id; });
+    return out;
+  };
+
   D.listBooks = async function (booksId) {
     return D.list("'" + booksId + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", 'id,name,size,modifiedTime');
   };
