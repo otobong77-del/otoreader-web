@@ -38,12 +38,11 @@
   T.resume = function () { if (!playing && queue.length) { playing = true; speakNext(); } };
   T.stop = function () { playing = false; queue = []; at = 0; if (synth) synth.cancel(); };
 
-  var lastId = null;
   function speakNext() {
     if (!playing) return;
     if (at >= queue.length) { playing = false; if (onEnd) onEnd(); return; }
     var item = queue[at];
-    if (item.id !== lastId) { lastId = item.id; if (onElement) onElement(item.id); }
+    if (onElement) onElement(item.id, item.text); // every sentence, so the page can mark it
     var u = new SpeechSynthesisUtterance(item.text);
     u.rate = rate;
     var v = T.voices().filter(function (x) { return x.name === voiceName; })[0];

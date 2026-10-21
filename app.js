@@ -9,6 +9,8 @@
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
   var filter = { shelf: 'reading', value: null };
+  try { var sf = JSON.parse(localStorage.getItem('oto.filter') || 'null'); if (sf && sf.shelf) filter = sf; } catch (e) {}
+  function rememberFilter() { try { localStorage.setItem('oto.filter', JSON.stringify(filter)); } catch (e) {} }
   var search = '', sort = 'recent', shown = 0;
   var local = null;          // a book opened from this computer (no Drive)
 
@@ -81,7 +83,7 @@
     var bs = root.books || {};
     for (var fp in bs) {
       var o = bs[fp];
-      out.entries[fp] = { title: o.title || '', author: o.author || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, collections: o.collections || [], bookmarks: o.bookmarks || [] };
+      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, collections: o.collections || [], bookmarks: o.bookmarks || [] };
     }
     return out;
   }
@@ -89,7 +91,7 @@
     var bs = {};
     for (var fp in entries) {
       var e = entries[fp];
-      bs[fp] = { title: e.title, author: e.author, progress: e.progress, position: e.position, status: e.status, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [] };
+      bs[fp] = { title: e.title, author: e.author, series: e.series || '', progress: e.progress, position: e.position, status: e.status, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [] };
     }
     return JSON.stringify({ version: 1, written: Date.now(), books: bs }, null, 2);
   }
@@ -158,6 +160,24 @@
 
   // ---------- UI: status, notice, dialog ----------
   var statusTimer = null;
+  // ---------- five-second cancel for removals ----------
+  var undoTimer = null, undoRevert = null;
+  function offerUndo(message, revert) {
+    if (undoTimer) clearInterval(undoTimer);
+    undoRevert = revert;
+    var until = Date.now() + 5000, st = $('status');
+    function draw() {
+      var left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      if (left <= 0) { clearInterval(undoTimer); undoTimer = null; undoRevert = null; st.classList.add('hidden'); st.innerHTML = ''; return; }
+      st.innerHTML = '<span>' + esc(message) + '</span> <button class="textBtn" id="undoBtn" style="margin-left:12px">Cancel (' + left + ')</button>';
+      $('undoBtn').onclick = function () { var r = undoRevert; clearInterval(undoTimer); undoTimer = null; undoRevert = null; st.classList.add('hidden'); st.innerHTML = ''; if (r) r(); };
+    }
+    st.classList.remove('hidden'); draw();
+    undoTimer = setInterval(draw, 250);
+  }
+  function snapshot(b) { var e = entryOf(b); return JSON.parse(JSON.stringify(e)); }
+  function restore(b, snap, el) { var e = entryOf(b); for (var k in snap) e[k] = snap[k]; touch(b); if (el && document.body.contains(el)) refreshRow(b, el); render(); buildDrawer(); }
+
   function setStatus(text, ms) {
     var s = $('status');
     if (statusTimer) clearTimeout(statusTimer);
@@ -193,19 +213,20 @@
       case 'finished': return e.status === STATUS.FINISHED;
       case 'collection': return value ? (e.collections || []).indexOf(value) >= 0 : (e.collections || []).length > 0;
       case 'author': return value ? b.author === value : true;
+      case 'series': return value ? (e.series || '') === value : !!(e.series || '');
       case 'format': return value ? b.format === value : true;
       case 'trash': return !!e.trashed;
     }
     return true;
   }
-  var titles = { reading: 'Reading Now', all: 'Books & documents', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', format: 'Formats', trash: 'Trash' };
+  var titles = { reading: 'Reading Now', all: 'Books & documents', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', series: 'Series', format: 'Formats', trash: 'Trash' };
   function buildDrawer() {
     var d = $('drawerItems'); d.innerHTML = '';
     function item(label, icon, shelf, value, sub) {
       var el = document.createElement('div');
       el.className = 'drawerItem' + (sub ? ' sub' : '') + (filter.shelf === shelf && filter.value === value ? ' selected' : '');
       el.innerHTML = '<span>' + icon + '</span><span>' + esc(label) + '</span><span class="count">' + count2(shelf, value) + '</span>';
-      el.onclick = function () { filter = { shelf: shelf, value: value }; closeDrawer(); render(); buildDrawer(); };
+      el.onclick = function () { filter = { shelf: shelf, value: value }; rememberFilter(); closeDrawer(); render(); buildDrawer(); };
       d.appendChild(el);
     }
     function count2(shelf, value) { return books.filter(function (b) { return inShelf(b, shelf, value); }).length; }
@@ -220,6 +241,7 @@
     collections().forEach(function (c) { item(c.name, '', 'collection', c.name, true); });
     sep();
     item('Authors', '&#128100;', 'author', null);
+    item('Series', '&#128218;', 'series', null);
     item('Formats', '&#128196;', 'format', null);
     item('Trash', '&#128465;', 'trash', null);
     sep();
@@ -244,13 +266,13 @@
   function render() {
     $('shelfTitle').textContent = filter.value ? filter.value : titles[filter.shelf];
     var list = $('list'); list.innerHTML = ''; shown = 0;
-    if ((filter.shelf === 'author' || filter.shelf === 'format') && !filter.value) {
+    if ((filter.shelf === 'author' || filter.shelf === 'format' || filter.shelf === 'series') && !filter.value) {
       var groups = {};
-      books.forEach(function (b) { if (!b.entry || !b.entry.trashed) { var k = filter.shelf === 'author' ? (b.author || 'Unknown author') : b.format; groups[k] = (groups[k] || 0) + 1; } });
+      books.forEach(function (b) { if (!b.entry || !b.entry.trashed) { var k = filter.shelf === 'author' ? (b.author || 'Unknown author') : filter.shelf === 'series' ? ((b.entry && b.entry.series) || '') : b.format; if (k) groups[k] = (groups[k] || 0) + 1; } });
       Object.keys(groups).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).forEach(function (g) {
         var el = document.createElement('div'); el.className = 'book'; el.style.padding = '14px 16px';
         el.innerHTML = '<div class="info"><div class="title">' + esc(g) + '</div><div class="meta">' + groups[g] + ' books</div></div>';
-        el.onclick = function () { filter = { shelf: filter.shelf, value: g === 'Unknown author' ? '' : g }; render(); };
+        el.onclick = function () { filter = { shelf: filter.shelf, value: g === 'Unknown author' ? '' : g }; rememberFilter(); render(); };
         list.appendChild(el);
       });
       return;
@@ -288,9 +310,9 @@
     loadCover(b, el.querySelector('.cover'));
     el.querySelector('.cover').onclick = function () { openBook(b); };
     el.querySelector('.title').onclick = function () { openBook(b); };
-    el.querySelector('.fav').onclick = function () { var x = entryOf(b); x.favorite = !x.favorite; touch(b); refreshRow(b, el); };
-    el.querySelector('.toread').onclick = function () { var x = entryOf(b); x.status = x.status === STATUS.TO_READ ? STATUS.NONE : STATUS.TO_READ; touch(b); refreshRow(b, el); };
-    el.querySelector('.done').onclick = function () { var x = entryOf(b); if (x.status === STATUS.FINISHED) x.status = STATUS.NONE; else { x.status = STATUS.FINISHED; x.progress = 1; } touch(b); refreshRow(b, el); };
+    el.querySelector('.fav').onclick = function () { var x = entryOf(b), snap = snapshot(b); x.favorite = !x.favorite; touch(b); refreshRow(b, el); if (!x.favorite) offerUndo('Removed from Favorites', function () { restore(b, snap); }); };
+    el.querySelector('.toread').onclick = function () { var x = entryOf(b), snap = snapshot(b); var off = x.status === STATUS.TO_READ; x.status = off ? STATUS.NONE : STATUS.TO_READ; touch(b); refreshRow(b, el); if (off) offerUndo('Removed from To Read', function () { restore(b, snap); }); };
+    el.querySelector('.done').onclick = function () { var x = entryOf(b), snap = snapshot(b); var off = x.status === STATUS.FINISHED; if (off) x.status = STATUS.NONE; else { x.status = STATUS.FINISHED; x.progress = 1; } touch(b); refreshRow(b, el); if (off) offerUndo('Removed from Have Read', function () { restore(b, snap); }); };
     el.querySelector('.coll').onclick = function () { chooseCollections(b, el); };
     el.querySelector('.more').onclick = function () { moreMenu(b, el); };
     return el;
@@ -318,8 +340,8 @@
     dialog(html, function () {
       e.title = $('edTitle').value.trim() || b.title; e.author = $('edAuthor').value.trim(); b.title = e.title; b.author = e.author; touch(b); refreshRow(b, el);
     });
-    $('edTrash').onclick = function () { e.trashed = !e.trashed; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); };
-    $('edRemove').onclick = function () { e.status = STATUS.NONE; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); };
+    $('edTrash').onclick = function () { var snap = snapshot(b); e.trashed = !e.trashed; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); if (e.trashed) offerUndo('Moved to Trash', function () { restore(b, snap); }); };
+    $('edRemove').onclick = function () { var snap = snapshot(b); e.status = STATUS.NONE; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); offerUndo('Removed from Reading Now', function () { restore(b, snap); }); };
   }
 
   // ---------- covers (cached once a book has been opened) ----------
@@ -442,7 +464,9 @@
     var t = [['#FFFFFF', '#1C1C1C', '#1A5FA8'], ['#F6ECD9', '#4A3B2A', '#7A4E1E'], ['#1E2228', '#D6DAE0', '#8FBCE8'], ['#000000', '#C8C8C8', '#7FA7D0']][opts.theme] || ['#FFFFFF', '#1C1C1C', '#1A5FA8'];
     var font = opts.font == 1 ? "body, body * { font-family: Georgia, 'Times New Roman', serif !important; }" : opts.font == 2 ? "body, body * { font-family: Roboto, 'Helvetica Neue', Arial, sans-serif !important; }" : '';
     var lh = 1 + opts.line / 10;
-    return 'html { background: ' + t[0] + ' !important; font-size: ' + opts.size + '% !important; }' +
+    var hl = opts.theme >= 2 ? 'rgba(242,177,52,0.35)' : '#F2E3A8';
+    return '::highlight(tts) { background-color: ' + hl + '; } span.tts-hl { background-color: ' + hl + '; }' +
+      'html { background: ' + t[0] + ' !important; font-size: ' + opts.size + '% !important; }' +
       'body { color: ' + t[1] + ' !important; background: ' + t[0] + ' !important; line-height: ' + lh + ' !important; word-wrap: break-word; }' +
       'body * { color: ' + t[1] + ' !important; background-color: transparent !important; background-image: none !important; }' +
       'body p, body div, body li, body td { line-height: inherit !important; }' +
@@ -502,6 +526,7 @@
     if (!R.book || R.book.local) return;
     var e = entryOf(R.book);
     e.position = R.section + ':' + f.toFixed(4); e.progress = progress;
+    if (e.status === STATUS.FINISHED && progress < 0.03) e.status = STATUS.READING; // read again from the start
     if (R.section === doc.spine.length - 1 && R.page >= R.pages - 1 && progress > 0.97) e.status = STATUS.FINISHED;
     if (posTimer) clearTimeout(posTimer);
     posTimer = setTimeout(function () { touch(R.book); }, 1500);
@@ -587,7 +612,7 @@
     }
     if (!items.length) { if (R.section < R.doc.spine.length - 1) { ttsContinue = true; loadSection(R.section + 1, 0, ''); } return; }
     Tts.setRate(opts.ttsRate); Tts.setVoice(opts.ttsVoice);
-    Tts.play(items, startIdx, function (id) { try { rd.goToAnchor(id); } catch (e) {} }, function () {
+    Tts.play(items, startIdx, function (id, text) { try { if (!rd.highlight(text, true)) rd.goToAnchor(id); } catch (e) {} }, function () {
       if (R.section < R.doc.spine.length - 1) { ttsContinue = true; loadSection(R.section + 1, 0, ''); }
       else $('ttsPlay').textContent = 'Play';
     });
@@ -629,7 +654,7 @@
     $('ttsRate').oninput = function () { opts.ttsRate = +this.value; $('ttsRateV').textContent = opts.ttsRate; saveOpts(); Tts.setRate(opts.ttsRate); if (Tts.playing()) { Tts.pause(); Tts.resume(); } };
     $('ttsVoice').onchange = function () { opts.ttsVoice = this.value; saveOpts(); Tts.setVoice(opts.ttsVoice); if (Tts.playing()) { Tts.pause(); Tts.resume(); } };
     $('ttsPlay').onclick = function () { if (Tts.playing()) { Tts.pause(); this.textContent = 'Play'; } else { startTts(1); } };
-    $('ttsStop').onclick = function () { Tts.stop(); $('ttsPlay').textContent = 'Play'; };
+    $('ttsStop').onclick = function () { Tts.stop(); $('ttsPlay').textContent = 'Play'; try { $('frame').contentWindow.__reader.clearHighlight(); } catch (e) {} };
     if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function () { if (!$('ttsPanel').classList.contains('hidden')) fillVoices(); };
 
     loadCache(); rebuild(); buildDrawer(); render();
