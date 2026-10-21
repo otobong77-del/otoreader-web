@@ -129,6 +129,13 @@
 <script src="formats.js"></script>
 <script src="tts.js"></script>
 <script src="app.js"></script>
-<script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(function () {});</script>
+<script>
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").then(function (reg) { try { reg.update(); setInterval(function () { reg.update(); }, 30 * 60 * 1000); } catch (e) {} }).catch(function () {});
+  // a newer version was just installed: show it right away
+  var reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", function () { if (reloaded) return; reloaded = true; location.reload(); });
+}
+</script>
 </body>
 </html>

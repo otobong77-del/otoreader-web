@@ -8,6 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
+  var APP_VERSION = 'web 31';
   var filter = { shelf: 'reading', value: null };
   try { var sf = JSON.parse(localStorage.getItem('oto.filter') || 'null'); if (sf && sf.shelf) filter = sf; } catch (e) {}
   function rememberFilter() { try { localStorage.setItem('oto.filter', JSON.stringify(filter)); } catch (e) {} }
@@ -399,7 +400,7 @@
 
   // ---------- settings ----------
   function settings() {
-    var html = '<h3 style="margin-top:0">Settings</h3><p class="muted">Signed in: ' + (Drive.signedIn() ? 'yes' : 'no') + '. Library loaded ' + (lib.loadedAt ? new Date(lib.loadedAt).toLocaleString() : 'never') + '.</p>' +
+    var html = '<h3 style="margin-top:0">Settings</h3><p class="muted">OtoReader ' + APP_VERSION + (navigator.onLine ? '' : ' · offline, showing the saved copy') + '. Signed in: ' + (Drive.signedIn() ? 'yes' : 'no') + '. Library loaded ' + (lib.loadedAt ? new Date(lib.loadedAt).toLocaleString() : 'never') + '.</p>' +
       '<div class="row"><button class="textBtn" id="stReload">Reload from Google Drive</button><button class="textBtn" id="stSignOut">Sign out</button></div>' +
       '<div class="row"><button class="textBtn" id="stClientId">Change client ID</button><button class="textBtn" id="stLocal">Open a file from this computer</button></div>';
     dialog(html, null, 'Close');
@@ -722,6 +723,11 @@
     if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function () { if (!$('ttsPanel').classList.contains('hidden')) fillVoices(); };
 
     loadCache(); rebuild(); buildDrawer(); render();
+    document.title = 'OtoReader';
+    function offlineNote() { if (!navigator.onLine) setStatus('No internet connection: this is the saved copy of your library. It refreshes when the connection is back.', 0); }
+    window.addEventListener('offline', offlineNote);
+    window.addEventListener('online', function () { setStatus('Back online.', 2000); loadFromDrive(true); });
+    offlineNote();
     if (!Drive.clientId()) { $('setup').classList.remove('hidden'); return; }
     var tries = 0;
     (function waitGoogle() { if (window.google && google.accounts) loadFromDrive(false); else if (tries++ < 50) setTimeout(waitGoogle, 200); else showNotice('Google sign-in did not load. Check the connection and reload.'); })();
