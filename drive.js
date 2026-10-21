@@ -107,14 +107,16 @@
 
   /** Finds the OtoReader sync folder: the folder that holds library.json (and a Books folder). */
   D.findLibrary = async function () {
-    var hits = await D.list("name = 'library.json' and trashed = false", 'id,name,parents,modifiedTime');
-    var best = null;
+    var hits = await D.list("name = 'library.json' and trashed = false", 'id,name,parents,modifiedTime,size');
+    // the biggest copy inside an OtoReader folder wins (an empty one is a placeholder another device made)
+    var best = null, bestScore = -1, parentNames = {};
     for (var i = 0; i < hits.length; i++) {
       var h = hits[i];
       if (!h.parents || !h.parents.length) continue;
-      var parent = await D.json('files/' + h.parents[0] + '?fields=id,name');
-      if (parent.name === 'OtoReader') { best = { fileId: h.id, folderId: parent.id, modified: h.modifiedTime }; break; }
-      if (!best) best = { fileId: h.id, folderId: parent.id, modified: h.modifiedTime };
+      var pid = h.parents[0];
+      if (!(pid in parentNames)) { try { parentNames[pid] = (await D.json('files/' + pid + '?fields=id,name')).name; } catch (e) { parentNames[pid] = ''; } }
+      var score = (parentNames[pid] === 'OtoReader' ? 1e15 : 0) + (+h.size || 0) * 1000 + (Date.parse(h.modifiedTime) || 0) / 1e9;
+      if (score > bestScore) { bestScore = score; best = { fileId: h.id, folderId: pid, modified: h.modifiedTime }; }
     }
     if (!best) return null;
     var books = await D.list("'" + best.folderId + "' in parents and name = 'Books' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
@@ -135,7 +137,9 @@
   };
 
   /** Makes the OtoReader folder, its Books folder and an empty library.json when the phone has not synced yet. */
-  D.ensureLibrary = async function () {
+  var ensuring = null;
+  D.ensureLibrary = function () { if (!ensuring) ensuring = ensureLibraryOnce().finally(function () { ensuring = null; }); return ensuring; };
+  async function ensureLibraryOnce() {
     var found = await D.findLibrary();
     if (found) return found;
     // the phone's folder may exist without a library file yet (anywhere in Drive): use it rather than making a second one
@@ -149,9 +153,11 @@
     if (!folderId) folderId = await D.createFolder('root', 'OtoReader');
     var books = await D.list("'" + folderId + "' in parents and name = 'Books' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
     var booksId = books.length ? books[0].id : await D.createFolder(folderId, 'Books');
+    var again = await D.findLibrary(); // another window may have made it meanwhile
+    if (again) return again;
     var fileId = await D.createText(folderId, 'library.json', JSON.stringify({ version: 1, written: Date.now(), books: {} }));
     return { fileId: fileId, folderId: folderId, booksId: booksId, modified: '' };
-  };
+  }
   D.createFolder = async function (parentId, name) {
     var r = await call(API + 'files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }) });
     return (await r.json()).id;

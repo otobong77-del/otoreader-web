@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 35';
+  var APP_VERSION = 'web 36';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
