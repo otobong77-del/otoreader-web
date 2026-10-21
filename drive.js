@@ -132,7 +132,7 @@
     var dirs = await D.list("'" + folderId + "' in parents and name = 'Covers' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
     if (!dirs.length) return {};
     var out = {};
-    (await D.list("'" + dirs[0].id + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", 'id,name')).forEach(function (f) { out[f.name] = f.id; });
+    (await D.list("'" + dirs[0].id + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", 'id,name')).forEach(function (f) { out[f.name.toLowerCase()] = f.id; }); // keys lower-cased: the library file keeps names lower-cased
     return out;
   };
 

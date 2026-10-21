@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 36';
+  var APP_VERSION = 'web 37';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -403,7 +403,7 @@
   function loadCover(b, el) {
     idbGet('covers', b.fp).then(function (blob) {
       if (blob) { showCover(el, blob); return; }
-      var id = lib.covers && lib.covers[b.name + '.jpg'];
+      var id = lib.covers && (lib.covers[(b.name + '.jpg').toLowerCase()] || lib.covers[b.name + '.jpg']);
       if (!id || !Drive.signedIn()) return;
       coverQueue.push({ b: b, el: el, id: id }); pumpCovers();
     });
