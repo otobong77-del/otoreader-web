@@ -7,23 +7,33 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .hidden { display: none !important; }
 .muted { color: var(--muted); }
 button { font: inherit; cursor: pointer; }
-.iconBtn { background: none; border: 0; color: inherit; font-size: 22px; width: 44px; height: 44px; border-radius: 22px; }
+.iconBtn { background: none; border: 0; color: inherit; font-size: 22px; width: 44px; height: 44px; border-radius: 22px; display: inline-flex; align-items: center; justify-content: center; }
+.iconBtn svg { width: 24px; height: 24px; fill: currentColor; }
 .iconBtn:hover { background: rgba(255,255,255,.1); }
 .textBtn { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 8px 12px; border-radius: 6px; }
 .textBtn.small { padding: 2px 8px; font-size: 13px; }
 .primary { background: var(--accent); color: #1A1A1A; border: 0; font-weight: 700; padding: 10px 18px; border-radius: 6px; }
 #app { display: flex; flex-direction: column; height: 100%; }
 .bar { display: flex; align-items: center; gap: 6px; background: var(--bar); color: #fff; padding: 0 8px; height: 56px; flex: none; box-shadow: 0 2px 6px rgba(0,0,0,.4); z-index: 5; }
-.bar h1 { font-size: 20px; font-weight: 500; margin: 0 8px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#search { width: 180px; max-width: 30vw; padding: 7px 10px; border-radius: 18px; border: 0; background: rgba(255,255,255,.15); color: #fff; }
+.bar h1 { font-size: 17px; font-weight: 500; margin: 0 8px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#search { width: 220px; max-width: 40vw; padding: 7px 10px; border-radius: 18px; border: 0; background: rgba(255,255,255,.15); color: #fff; }
+.popup { position: absolute; top: 52px; right: 8px; background: var(--card); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); z-index: 25; min-width: 240px; padding: 6px 0; }
+.popupItem { padding: 11px 18px; cursor: pointer; }
+.popupItem:hover { background: rgba(255,255,255,.08); }
+.popupItem.on { color: var(--accent); }
+.popupLabel { padding: 6px 18px 2px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+.popupSep { height: 1px; background: var(--divider); margin: 6px 0; }
+#dropHint { position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--accent); background: rgba(4,25,31,.85); z-index: 12; pointer-events: none; }
 #search::placeholder { color: rgba(255,255,255,.6); }
 #sort { background: rgba(255,255,255,.15); color: #fff; border: 0; padding: 7px; border-radius: 6px; }
 #sort option { color: #000; }
 #main { flex: 1; overflow: auto; position: relative; }
 #list { max-width: 980px; margin: 0 auto; padding: 8px; }
 #drawer { position: absolute; top: 0; left: 0; bottom: 0; width: 300px; background: var(--card); z-index: 20; overflow: auto; box-shadow: 4px 0 16px rgba(0,0,0,.5); }
-.drawerHead { padding: 22px 24px 12px; font-size: 20px; font-weight: 700; border-bottom: 1px solid var(--divider); }
-.drawerItem { display: flex; align-items: center; gap: 16px; padding: 13px 24px; cursor: pointer; }
+.drawerHead { padding: 22px 24px 12px; font-size: 20px; font-weight: 700; border-bottom: 1px solid var(--divider); background: var(--bar); color: #fff; }
+.drawerItem { display: flex; align-items: center; gap: 16px; padding: 11px 24px; cursor: pointer; font-size: 15px; }
+.drawerItem svg { width: 22px; height: 22px; fill: currentColor; flex: none; color: var(--muted); }
+.drawerItem.selected svg { color: var(--accent); }
 .drawerItem:hover { background: rgba(255,255,255,.06); }
 .drawerItem.selected { color: var(--accent); }
 .drawerItem .count { margin-left: auto; color: var(--muted); font-size: 13px; }
@@ -38,18 +48,20 @@ button { font: inherit; cursor: pointer; }
 .row { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
 .row.right { justify-content: flex-end; }
 
-/* book rows, like ReadEra */
-.book { display: flex; gap: 14px; background: var(--card); border-radius: 10px; padding: 10px; margin: 8px 0; }
-.cover { width: 104px; height: 150px; flex: none; border-radius: 4px; background: var(--placeholder); display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; font-size: 12px; color: #fff; overflow: hidden; cursor: pointer; }
+/* book rows, like the phone */
+.book { display: flex; gap: 12px; background: var(--card); border-radius: 8px; padding: 7px; margin: 6px 0; }
+.cover { width: 78px; height: 112px; flex: none; border-radius: 4px; background: var(--placeholder); display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; font-size: 11px; color: #fff; overflow: hidden; cursor: pointer; }
 .cover img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
 .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.title { font-size: 17px; cursor: pointer; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.author { color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
-.pbar { height: 2px; background: var(--divider); margin: auto 0 8px; position: relative; }
+.title { font-size: 15px; cursor: pointer; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.author { color: var(--muted); font-size: 13px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.pbar { height: 2px; background: var(--divider); margin: auto 0 2px; position: relative; }
 .pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
 .actions { display: flex; justify-content: space-around; }
-.actions button { background: none; border: 0; color: var(--inactive); font-size: 20px; width: 40px; height: 36px; border-radius: 18px; }
+.actions button { background: none; border: 0; color: var(--inactive); width: 40px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; position: relative; }
+.actions button svg { width: 22px; height: 22px; fill: currentColor; }
+.actions button sup { position: absolute; top: 2px; right: 4px; font-size: 10px; }
 .actions button.on { color: var(--accent); }
 .actions button:hover { background: rgba(255,255,255,.08); }
 .missing { opacity: .55; }

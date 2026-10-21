@@ -14,6 +14,24 @@
   var search = '', sort = 'recent', shown = 0;
   var local = null;          // a book opened from this computer (no Drive)
 
+
+  // the phone's icons, as inline SVG paths
+  var ICON = {
+    reading: 'M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z',
+    all: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z',
+    star: 'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',
+    starOn: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+    clock: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
+    doneAll: 'M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z',
+    person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    series: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
+    collections: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8zm0 3h4v2h-4zm0-6h8v2h-8z',
+    layers: 'M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z',
+    trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+    settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+    more: 'M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'
+  };
+  function svg(name) { return '<svg viewBox="0 0 24 24"><path d="' + ICON[name] + '"/></svg>'; }
   function fingerprint(name, size) { return name.toLowerCase() + ':' + size; }
   function formatOf(name) { var e = name.toLowerCase().split('.').pop(); return { epub: 'EPUB', pdf: 'PDF', txt: 'TXT', fb2: 'FB2', mobi: 'MOBI', azw: 'AZW', azw3: 'AZW3', docx: 'DOCX', rtf: 'RTF', odt: 'ODT', cbz: 'CBZ', cbr: 'CBR' }[e] || e.toUpperCase(); }
   function sizeText(n) { n = +n || 0; if (n >= 1048576) return (n / 1048576).toFixed(n >= 10485760 ? 0 : 1) + ' MB'; if (n >= 1024) return Math.round(n / 1024) + ' kB'; return n + ' B'; }
@@ -127,15 +145,15 @@
     try {
       await Drive.signIn(false);
     } catch (e) {
-      $('accountBtn').textContent = 'Sign in';
+      $('accountBtn').classList.remove('hidden');
       if (!books.length) showNotice('Press <b>Sign in</b> at the top right to open your Google Drive library.');
       return;
     }
-    $('accountBtn').textContent = 'Signed in';
+    $('accountBtn').classList.add('hidden');
     setStatus('Looking for the OtoReader folder in Google Drive…');
     try {
       var found = await Drive.findLibrary();
-      if (!found) { showNotice('No synced library yet. On the phone open OtoReader → Settings → <b>Google Drive sync</b>, choose a folder in the Drive app, and press <b>Sync now</b>. Then press ⟳ here.'); setStatus('', 0); return; }
+      if (!found) { found = await Drive.ensureLibrary(); showNotice('Your library folder has been created in Google Drive. Add books here with ⋮ → <b>Add books from this computer</b>, or sync the phone and they appear here.'); }
       lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId; lib.remoteModified = found.modified || '';
       setStatus('Reading the library file (this can take a minute for a big library)…');
       var remote = parseLibrary(await Drive.text(found.fileId));
@@ -225,27 +243,25 @@
     function item(label, icon, shelf, value, sub) {
       var el = document.createElement('div');
       el.className = 'drawerItem' + (sub ? ' sub' : '') + (filter.shelf === shelf && filter.value === value ? ' selected' : '');
-      el.innerHTML = '<span>' + icon + '</span><span>' + esc(label) + '</span><span class="count">' + count2(shelf, value) + '</span>';
+      el.innerHTML = (ICON[icon] ? svg(icon) : '<span>' + icon + '</span>') + '<span>' + esc(label) + '</span><span class="count">' + count2(shelf, value) + '</span>';
       el.onclick = function () { filter = { shelf: shelf, value: value }; rememberFilter(); closeDrawer(); render(); buildDrawer(); };
       d.appendChild(el);
     }
     function count2(shelf, value) { return books.filter(function (b) { return inShelf(b, shelf, value); }).length; }
     function sep() { var s = document.createElement('div'); s.className = 'drawerSep'; d.appendChild(s); }
-    item('Reading Now', '&#128214;', 'reading', null);
-    item('Books & documents', '&#128218;', 'all', null);
-    item('Favorites', '&#9733;', 'favorites', null);
-    item('To Read', '&#128337;', 'toread', null);
-    item('Have Read', '&#10004;', 'finished', null);
-    sep();
-    item('Collections', '&#128450;', 'collection', null);
+    item('Reading Now', 'reading', 'reading', null);
+    item('Books & documents', 'all', 'all', null);
+    item('Favorites', 'star', 'favorites', null);
+    item('To Read', 'clock', 'toread', null);
+    item('Have Read', 'doneAll', 'finished', null);
+    item('Authors', 'person', 'author', null);
+    item('Series', 'series', 'series', null);
+    item('Collections', 'collections', 'collection', null);
     collections().forEach(function (c) { item(c.name, '', 'collection', c.name, true); });
+    item('Formats', 'layers', 'format', null);
+    item('Trash', 'trash', 'trash', null);
     sep();
-    item('Authors', '&#128100;', 'author', null);
-    item('Series', '&#128218;', 'series', null);
-    item('Formats', '&#128196;', 'format', null);
-    item('Trash', '&#128465;', 'trash', null);
-    sep();
-    var s = document.createElement('div'); s.className = 'drawerItem'; s.innerHTML = '<span>&#9881;</span><span>Settings</span>';
+    var s = document.createElement('div'); s.className = 'drawerItem'; s.innerHTML = svg('settings') + '<span>Settings</span>';
     s.onclick = function () { closeDrawer(); settings(); }; d.appendChild(s);
   }
   function openDrawer() { $('drawer').classList.remove('hidden'); $('scrim').classList.remove('hidden'); }
@@ -302,11 +318,11 @@
       '<div class="meta">' + b.format + ', ' + sizeText(b.size) + (b.file ? '' : ' · not uploaded from the phone yet') + (e.trashed ? ' · in the trash' : '') + '</div>' +
       '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
       '<div class="actions">' +
-      '<button class="fav' + (e.favorite ? ' on' : '') + '" title="Favorite">' + (e.favorite ? '&#9733;' : '&#9734;') + '</button>' +
-      '<button class="toread' + (e.status === STATUS.TO_READ ? ' on' : '') + '" title="To Read">&#128337;</button>' +
-      '<button class="done' + (e.status === STATUS.FINISHED ? ' on' : '') + '" title="Have Read">&#10004;&#10004;</button>' +
-      '<button class="coll' + ((e.collections || []).length ? ' on' : '') + '" title="Collections">&#128218;' + ((e.collections || []).length ? '<sup>' + e.collections.length + '</sup>' : '') + '</button>' +
-      '<button class="more" title="More">&#8942;</button></div></div>';
+      '<button class="fav' + (e.favorite ? ' on' : '') + '" title="Favorite">' + svg(e.favorite ? 'starOn' : 'star') + '</button>' +
+      '<button class="toread' + (e.status === STATUS.TO_READ ? ' on' : '') + '" title="To Read">' + svg('clock') + '</button>' +
+      '<button class="done' + (e.status === STATUS.FINISHED ? ' on' : '') + '" title="Have Read">' + svg('doneAll') + '</button>' +
+      '<button class="coll' + ((e.collections || []).length ? ' on' : '') + '" title="Collections">' + svg('collections') + ((e.collections || []).length ? '<sup>' + e.collections.length + '</sup>' : '') + '</button>' +
+      '<button class="more" title="More">' + svg('more') + '</button></div></div>';
     loadCover(b, el.querySelector('.cover'));
     el.querySelector('.cover').onclick = function () { openBook(b); };
     el.querySelector('.title').onclick = function () { openBook(b); };
@@ -418,6 +434,32 @@
       hideReader();
     }
   }
+  /** Uploads files to the Books folder in Drive and lists them, so the phone (and ReadEra, through the phone) gets them at the next sync. */
+  async function addBooks(files) {
+    files = files.filter(function (f) { return Books.canOpen(f.name); });
+    if (!files.length) { setStatus('No book files among those.', 4000); return; }
+    try {
+      await Drive.signIn(false);
+      if (!lib.booksId) { var found = await Drive.ensureLibrary(); lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId; }
+      var done = 0;
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i], fp = fingerprint(f.name, f.size);
+        if (lib.files[fp]) { done++; continue; }
+        setStatus('Uploading ' + f.name + ' (' + (i + 1) + ' of ' + files.length + ')…', 0);
+        var up = await Drive.upload(lib.booksId, f, function (sent, total) { setStatus('Uploading ' + f.name + ': ' + Math.round(100 * sent / total) + '% (' + (i + 1) + ' of ' + files.length + ')', 0); });
+        lib.files[fp] = { id: up.id, name: f.name, size: f.size, modifiedTime: up.modifiedTime || new Date().toISOString() };
+        var e = lib.entries[fp] || { title: stem(f.name), author: '', progress: 0, position: null, status: 0, favorite: false, lastOpened: 0, updated: 0, trashed: false, collections: [], bookmarks: [] };
+        lib.entries[fp] = e; e.updated = Date.now(); dirty[fp] = 1;
+        done++;
+        rebuild(); buildDrawer(); render();
+      }
+      await flush();
+      setStatus(done + ' book' + (done === 1 ? '' : 's') + ' added. The phone picks them up at its next sync.', 6000);
+    } catch (e) {
+      setStatus('Could not add: ' + e.message, 8000);
+    }
+  }
+
   function openLocalFile(file) {
     var ext = file.name.toLowerCase().split('.').pop();
     showReader(); $('loading').classList.remove('hidden'); $('loading').textContent = 'Opening…';
@@ -628,13 +670,35 @@
     $('fileInput').onchange = function () { if (this.files[0]) openLocalFile(this.files[0]); this.value = ''; };
     $('menuBtn').onclick = openDrawer; $('scrim').onclick = closeDrawer;
     $('search').oninput = function () { search = this.value; render(); };
-    $('sort').onchange = function () { sort = this.value; try { localStorage.setItem('oto.sort', sort); } catch (e) {} render(); };
-    try { sort = localStorage.getItem('oto.sort') || 'recent'; $('sort').value = sort; } catch (e) {}
-    $('refreshBtn').onclick = function () { loadFromDrive(true); };
+    $('searchBtn').onclick = function () { var s = $('search'); s.classList.toggle('hidden'); if (!s.classList.contains('hidden')) s.focus(); else { s.value = ''; search = ''; render(); } };
+    try { sort = localStorage.getItem('oto.sort') || 'recent'; } catch (e) {}
+    function markSort() { document.querySelectorAll('.sortItem').forEach(function (i) { i.classList.toggle('on', i.dataset.sort === sort); }); }
+    markSort();
+    $('moreBtn').onclick = function (ev) { ev.stopPropagation(); $('moreMenu').classList.toggle('hidden'); };
+    document.addEventListener('click', function (ev) { if (!$('moreMenu').contains(ev.target)) $('moreMenu').classList.add('hidden'); });
+    document.querySelectorAll('.sortItem').forEach(function (i) { i.onclick = function () { sort = i.dataset.sort; try { localStorage.setItem('oto.sort', sort); } catch (e) {} markSort(); $('moreMenu').classList.add('hidden'); render(); }; });
+    document.querySelectorAll('#moreMenu [data-act]').forEach(function (i) {
+      i.onclick = function () {
+        $('moreMenu').classList.add('hidden');
+        if (i.dataset.act === 'add') $('addInput').click();
+        else if (i.dataset.act === 'open') $('fileInput').click();
+        else if (i.dataset.act === 'settings') settings();
+      };
+    });
+    $('addInput').onchange = function () { addBooks(Array.prototype.slice.call(this.files)); this.value = ''; };
+    var dragDepth = 0;
+    document.addEventListener('dragenter', function (ev) { if (ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types, 'Files') >= 0 && $('reader').classList.contains('hidden')) { dragDepth++; $('dropHint').classList.remove('hidden'); } });
+    document.addEventListener('dragleave', function () { if (--dragDepth <= 0) { dragDepth = 0; $('dropHint').classList.add('hidden'); } });
+    document.addEventListener('dragover', function (ev) { ev.preventDefault(); });
+    document.addEventListener('drop', function (ev) { ev.preventDefault(); dragDepth = 0; $('dropHint').classList.add('hidden'); if (ev.dataTransfer && ev.dataTransfer.files.length && $('reader').classList.contains('hidden')) addBooks(Array.prototype.slice.call(ev.dataTransfer.files)); });
+    $('syncBtn').onclick = function () { if (Object.keys(dirty).length) flush().then(function () { loadFromDrive(true); }); else loadFromDrive(true); };
+    $('refreshBtn').onclick = function () { rebuild(); buildDrawer(); render(); checkForUpdates(true); };
     $('accountBtn').onclick = function () {
       if (!Drive.clientId()) { $('setup').classList.remove('hidden'); return; }
       Drive.signIn(true).then(function () { loadFromDrive(true); }).catch(function (e) { showNotice('Sign-in failed: ' + esc(e.message)); });
     };
+    // stay signed in: a fresh token is fetched quietly before the old one runs out, until Sign out
+    setInterval(function () { if (Drive.wantsSignIn() && !document.hidden) Drive.signIn(false).catch(function () {}); }, 20 * 60 * 1000);
     $('backBtn').onclick = hideReader;
     $('prevBtn').onclick = prev; $('nextBtn').onclick = next;
     $('tapLeft').onclick = prev; $('tapRight').onclick = next;

@@ -17,19 +17,28 @@
 <!-- ===== Library ===== -->
 <div id="app">
   <header class="bar">
-    <button id="menuBtn" class="iconBtn" title="Menu">&#9776;</button>
+    <button id="menuBtn" class="iconBtn" title="Menu"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
     <h1 id="shelfTitle">Reading Now</h1>
-    <input id="search" type="search" placeholder="Search" autocomplete="off">
-    <select id="sort" title="Sort">
-      <option value="recent">Recently read</option>
-      <option value="newest">Newest files first</option>
-      <option value="title">Title</option>
-      <option value="author">Author</option>
-    </select>
-    <button id="refreshBtn" class="iconBtn" title="Reload from Google Drive">&#8635;</button>
+    <input id="search" type="search" placeholder="Search" autocomplete="off" class="hidden">
+    <button id="accountBtn" class="textBtn hidden">Sign in</button>
+    <button id="syncBtn" class="iconBtn" title="Sync with Google Drive"><svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg></button>
+    <button id="refreshBtn" class="iconBtn" title="Refresh"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+    <button id="searchBtn" class="iconBtn" title="Search"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></button>
+    <button id="moreBtn" class="iconBtn" title="More"><svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg></button>
     <button id="installBtn" class="textBtn hidden" title="Put OtoReader on this computer">Install</button>
-    <button id="accountBtn" class="textBtn">Sign in</button>
   </header>
+  <div id="moreMenu" class="popup hidden">
+    <div class="popupItem" data-act="add">Add books from this computer…</div>
+    <div class="popupItem" data-act="open">Open a file without adding it</div>
+    <div class="popupSep"></div>
+    <div class="popupLabel">Sort by</div>
+    <div class="popupItem sortItem" data-sort="recent">Recently read</div>
+    <div class="popupItem sortItem" data-sort="newest">Newest files first</div>
+    <div class="popupItem sortItem" data-sort="title">Title</div>
+    <div class="popupItem sortItem" data-sort="author">Author</div>
+    <div class="popupSep"></div>
+    <div class="popupItem" data-act="settings">Settings</div>
+  </div>
 
   <nav id="drawer" class="hidden">
     <div class="drawerHead">OtoReader</div>
@@ -62,6 +71,8 @@
 
   <footer id="status" class="hidden"></footer>
   <input id="fileInput" type="file" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
+  <input id="addInput" type="file" multiple accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
+  <div id="dropHint" class="hidden">Drop books here to add them to your library</div>
 </div>
 
 <!-- ===== Reader ===== -->

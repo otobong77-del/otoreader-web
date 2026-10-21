@@ -7,7 +7,7 @@
   var token = null, expires = 0, tokenClient = null;
 
   try {
-    var saved = JSON.parse(sessionStorage.getItem('oto.token') || 'null');
+    var saved = JSON.parse((localStorage.getItem('oto.token') || sessionStorage.getItem('oto.token')) || 'null');
     if (saved && saved.expires > Date.now() + 60000) { token = saved.token; expires = saved.expires; }
   } catch (e) {}
 
@@ -18,7 +18,9 @@
   };
   D.setClientId = function (id) { try { localStorage.setItem('oto.clientId', id.trim()); } catch (e) {} };
   D.signedIn = function () { return !!token && expires > Date.now(); };
-  D.signOut = function () { token = null; expires = 0; try { sessionStorage.removeItem('oto.token'); } catch (e) {} };
+  D.signOut = function () { token = null; expires = 0; try { localStorage.removeItem('oto.token'); sessionStorage.removeItem('oto.token'); localStorage.removeItem('oto.signedIn'); } catch (e) {} };
+  /** True once the person signed in on this computer (until Sign out); a new token is then fetched silently. */
+  D.wantsSignIn = function () { try { return localStorage.getItem('oto.signedIn') === '1'; } catch (e) { return false; } };
 
   /** Gets an access token. interactive=false tries silently (works once consent was given). */
   D.signIn = function (interactive) {
@@ -34,7 +36,7 @@
           if (!r || r.error) { reject(new Error((r && (r.error_description || r.error)) || 'Sign-in failed')); return; }
           token = r.access_token;
           expires = Date.now() + (r.expires_in ? r.expires_in * 1000 : 3500000);
-          try { sessionStorage.setItem('oto.token', JSON.stringify({ token: token, expires: expires })); } catch (e) {}
+          try { localStorage.setItem('oto.token', JSON.stringify({ token: token, expires: expires })); localStorage.setItem('oto.signedIn', '1'); } catch (e) {}
           resolve(token);
         },
         error_callback: function (e) { reject(new Error(e && e.message ? e.message : 'Sign-in window closed')); },
@@ -130,6 +132,40 @@
     var out = {};
     (await D.list("'" + dirs[0].id + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", 'id,name')).forEach(function (f) { out[f.name] = f.id; });
     return out;
+  };
+
+  /** Makes the OtoReader folder, its Books folder and an empty library.json when the phone has not synced yet. */
+  D.ensureLibrary = async function () {
+    var found = await D.findLibrary();
+    if (found) return found;
+    var roots = await D.list("name = 'OtoReader' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false", 'id,name');
+    var folderId = roots.length ? roots[0].id : await D.createFolder('root', 'OtoReader');
+    var books = await D.list("'" + folderId + "' in parents and name = 'Books' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
+    var booksId = books.length ? books[0].id : await D.createFolder(folderId, 'Books');
+    var fileId = await D.createText(folderId, 'library.json', JSON.stringify({ version: 1, written: Date.now(), books: {} }));
+    return { fileId: fileId, folderId: folderId, booksId: booksId, modified: '' };
+  };
+  D.createFolder = async function (parentId, name) {
+    var r = await call(API + 'files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }) });
+    return (await r.json()).id;
+  };
+  /** Uploads a file in 8 MB pieces (resumable), so big books and shaky connections work. Returns {id, name, size, modifiedTime}. */
+  D.upload = async function (parentId, file, onProgress) {
+    var meta = JSON.stringify({ name: file.name, parents: [parentId] });
+    var start = await call(UPLOAD + 'files?uploadType=resumable&fields=id,name,size,modifiedTime', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Length': String(file.size), 'X-Upload-Content-Type': file.type || 'application/octet-stream' }, body: meta });
+    var url = start.headers.get('Location');
+    if (!url) throw new Error('Google Drive did not accept the upload');
+    var CHUNK = 8 * 1048576, sent = 0, last = null;
+    while (sent < file.size || file.size === 0) {
+      var end = Math.min(file.size, sent + CHUNK);
+      var r = await fetch(url, { method: 'PUT', headers: { 'Content-Range': 'bytes ' + sent + '-' + (end - 1) + '/' + file.size }, body: file.slice(sent, end) });
+      if (r.status === 308) { var range = r.headers.get('Range'); sent = range ? +range.split('-')[1] + 1 : end; }
+      else if (r.ok) { last = await r.json(); sent = file.size; if (file.size === 0) break; }
+      else throw new Error('Upload failed (' + r.status + ')');
+      if (onProgress) onProgress(sent, file.size);
+      if (file.size === 0) break;
+    }
+    return last;
   };
 
   D.listBooks = async function (booksId) {
