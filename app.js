@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 34';
+  var APP_VERSION = 'web 35';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -178,7 +178,7 @@
     setStatus('Looking for the OtoReader folder in Google Drive…');
     try {
       var found = await Drive.findLibrary();
-      if (!found) { found = await Drive.ensureLibrary(); showNotice('Your library folder has been created in Google Drive. Add books here with ⋮ → <b>Add books from this computer</b>, or sync the phone and they appear here.'); }
+      if (!found) { found = await Drive.ensureLibrary(); showNotice('No library file in Google Drive yet. Press <b>Sync</b> on the phone; this page picks it up by itself. You can also add books here with ⋮ → <b>Add books from this computer</b>.'); }
       lib.fileId = found.fileId; lib.folderId = found.folderId; lib.booksId = found.booksId; lib.remoteModified = found.modified || '';
       setStatus('Reading the library file (this can take a minute for a big library)…');
       var remote = parseLibrary(await Drive.text(found.fileId));

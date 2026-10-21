@@ -138,8 +138,15 @@
   D.ensureLibrary = async function () {
     var found = await D.findLibrary();
     if (found) return found;
-    var roots = await D.list("name = 'OtoReader' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false", 'id,name');
-    var folderId = roots.length ? roots[0].id : await D.createFolder('root', 'OtoReader');
+    // the phone's folder may exist without a library file yet (anywhere in Drive): use it rather than making a second one
+    var folders = await D.list("name = 'OtoReader' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name,parents');
+    var folderId = null;
+    for (var i = 0; i < folders.length && !folderId; i++) {
+      var kids = await D.list("'" + folders[i].id + "' in parents and name = 'Books' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id');
+      if (kids.length) folderId = folders[i].id;
+    }
+    if (!folderId && folders.length) folderId = folders[0].id;
+    if (!folderId) folderId = await D.createFolder('root', 'OtoReader');
     var books = await D.list("'" + folderId + "' in parents and name = 'Books' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
     var booksId = books.length ? books[0].id : await D.createFolder(folderId, 'Books');
     var fileId = await D.createText(folderId, 'library.json', JSON.stringify({ version: 1, written: Date.now(), books: {} }));
