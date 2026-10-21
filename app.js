@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 32';
+  var APP_VERSION = 'web 33';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -420,10 +420,11 @@
   // ---------- settings ----------
   function settings() {
     var html = '<h3 style="margin-top:0">Settings</h3><p class="muted">OtoReader ' + APP_VERSION + (navigator.onLine ? '' : ' · offline, showing the saved copy') + '. Signed in: ' + (Drive.signedIn() ? 'yes' : 'no') + '. Library loaded ' + (lib.loadedAt ? new Date(lib.loadedAt).toLocaleString() : 'never') + '.</p>' +
-      '<div class="row"><button class="textBtn" id="stReload">Reload from Google Drive</button><button class="textBtn" id="stSignOut">Sign out</button></div>' +
+      '<div class="row"><button class="textBtn" id="stReload">Reload from Google Drive</button><button class="textBtn" id="stUpdate">Get the latest version</button><button class="textBtn" id="stSignOut">Sign out</button></div>' +
       '<div class="row"><button class="textBtn" id="stClientId">Change client ID</button><button class="textBtn" id="stLocal">Open a file from this computer</button></div>';
     dialog(html, null, 'Close');
     $('stReload').onclick = function () { $('dialog').classList.add('hidden'); loadFromDrive(true); };
+    $('stUpdate').onclick = function () { $('dialog').classList.add('hidden'); getLatest(); };
     $('stSignOut').onclick = function () { Drive.signOut(); $('accountBtn').textContent = 'Sign in'; $('dialog').classList.add('hidden'); };
     $('stClientId').onclick = function () { $('dialog').classList.add('hidden'); $('setup').classList.remove('hidden'); $('clientIdInput').value = Drive.clientId(); };
     $('stLocal').onclick = function () { $('dialog').classList.add('hidden'); $('fileInput').click(); };
