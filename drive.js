@@ -8,7 +8,7 @@
 
   try {
     var saved = JSON.parse((localStorage.getItem('oto.token') || sessionStorage.getItem('oto.token')) || 'null');
-    if (saved && saved.expires > Date.now() + 60000) { token = saved.token; expires = saved.expires; }
+    if (saved && saved.expires > Date.now() + 30000) { token = saved.token; expires = saved.expires; }
   } catch (e) {}
 
   var D = window.Drive = {};
@@ -22,10 +22,13 @@
   /** True once the person signed in on this computer (until Sign out); a new token is then fetched silently. */
   D.wantsSignIn = function () { try { return localStorage.getItem('oto.signedIn') === '1'; } catch (e) { return false; } };
 
-  /** Gets an access token. interactive=false tries silently (works once consent was given). */
-  D.signIn = function (interactive) {
-    return new Promise(function (resolve, reject) {
-      if (D.signedIn()) { resolve(token); return; }
+  /** Milliseconds until the current token runs out (0 when signed out). Google tokens last an hour. */
+  D.expiresIn = function () { return token ? Math.max(0, expires - Date.now()) : 0; };
+
+  var pending = null;
+  function getToken(prompt) {
+    if (pending) return pending;
+    pending = new Promise(function (resolve, reject) {
       if (!window.google || !google.accounts || !google.accounts.oauth2) { reject(new Error('Google sign-in script not loaded yet. Check the internet connection and try again.')); return; }
       var id = D.clientId();
       if (!id) { reject(new Error('No client ID')); return; }
@@ -39,11 +42,38 @@
           try { localStorage.setItem('oto.token', JSON.stringify({ token: token, expires: expires })); localStorage.setItem('oto.signedIn', '1'); } catch (e) {}
           resolve(token);
         },
-        error_callback: function (e) { reject(new Error(e && e.message ? e.message : 'Sign-in window closed')); },
+        error_callback: function (e) {
+          var t = e && e.type;
+          reject(new Error(t === 'popup_failed_to_open' ? 'The browser blocked the Google window: press Sync once more' : (e && e.message ? e.message : 'Sign-in window closed')));
+        },
       });
-      tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
-    });
+      tokenClient.requestAccessToken({ prompt: prompt });
+    }).finally(function () { pending = null; });
+    return pending;
+  }
+
+  /** Gets an access token. interactive=false renews quietly (works once consent was given; a browser may need it to happen during a click). */
+  D.signIn = function (interactive) {
+    if (!interactive && D.signedIn()) return Promise.resolve(token);
+    return getToken(interactive ? 'consent' : '');
   };
+
+  /**
+   * Stays signed in until Sign out: a new token is fetched quietly a few minutes before the old one runs out.
+   * Google only hands one out through a small window that closes by itself; a browser allows that window
+   * during a click or key press (the desktop app always), so the renewal is tried on a timer and again on
+   * the next click once the token is within ten minutes of its end.
+   */
+  var RENEW_AHEAD = 10 * 60 * 1000;
+  function renewIfDue() {
+    if (!D.wantsSignIn() || !D.clientId()) return;
+    if (token && D.expiresIn() > RENEW_AHEAD) return;
+    getToken('').catch(function () {});
+  }
+  D.renewIfDue = renewIfDue;
+  setInterval(function () { if (!document.hidden) renewIfDue(); }, 60 * 1000);
+  document.addEventListener('pointerdown', renewIfDue, true);
+  document.addEventListener('keydown', renewIfDue, true);
 
   function headers(extra) {
     var h = { Authorization: 'Bearer ' + token };

@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 37';
+  var APP_VERSION = 'web 38';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -172,6 +172,7 @@
     } catch (e) {
       $('accountBtn').classList.remove('hidden');
       if (!books.length) showNotice('Press <b>Sign in</b> at the top right to open your Google Drive library.');
+      else setStatus('Google Drive: ' + e.message, 8000);
       return;
     }
     $('accountBtn').classList.add('hidden');
@@ -724,8 +725,7 @@
       if (!Drive.clientId()) { $('setup').classList.remove('hidden'); return; }
       Drive.signIn(true).then(function () { loadFromDrive(true); }).catch(function (e) { showNotice('Sign-in failed: ' + esc(e.message)); });
     };
-    // stay signed in: a fresh token is fetched quietly before the old one runs out, until Sign out
-    setInterval(function () { if (Drive.wantsSignIn() && !document.hidden) Drive.signIn(false).catch(function () {}); }, 20 * 60 * 1000);
+    // staying signed in (quiet renewal before the token runs out) lives in drive.js
     $('backBtn').onclick = hideReader;
     $('prevBtn').onclick = prev; $('nextBtn').onclick = next;
     $('tapLeft').onclick = prev; $('tapRight').onclick = next;
