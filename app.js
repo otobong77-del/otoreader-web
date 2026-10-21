@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 33';
+  var APP_VERSION = 'web 34';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -92,7 +92,10 @@
     var fps = Object.keys(dirty);
     if (!fps.length || !lib.fileId || !Drive.signedIn()) return;
     try {
-      var remote = parseLibrary(await Drive.text(lib.fileId));
+      var remoteText;
+      try { remoteText = await Drive.text(lib.fileId); }
+      catch (e) { var again = await Drive.findLibrary(); if (!again) throw e; lib.fileId = again.fileId; lib.folderId = again.folderId; lib.booksId = again.booksId; remoteText = await Drive.text(lib.fileId); }
+      var remote = parseLibrary(remoteText);
       for (var fp in remote.entries) if (!dirty[fp]) lib.entries[fp] = mergeEntry(lib.entries[fp], remote.entries[fp]);
       fps.forEach(function (f) { var mine = lib.entries[f], theirs = remote.entries[f]; if (theirs && theirs.updated > mine.updated) lib.entries[f] = mergeEntry(mine, theirs); });
       var text = serializeLibrary(lib.entries);
@@ -147,7 +150,9 @@
     if (!force && now - lastCheck < 30000) return;
     lastCheck = now; checking = true;
     try {
-      var m = await Drive.modified(lib.fileId);
+      var m;
+      try { m = await Drive.modified(lib.fileId); }
+      catch (e) { var again = await Drive.findLibrary(); if (again && again.fileId !== lib.fileId) { lib.fileId = again.fileId; lib.folderId = again.folderId; lib.booksId = again.booksId; m = again.modified || 'new'; } }
       if (m && m !== lib.remoteModified) {
         if (Object.keys(dirty).length) await flush(); // our edits go in first; flush merges the phone's copy
         await loadFromDrive(true, true);
