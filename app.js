@@ -8,7 +8,26 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 31';
+  var APP_VERSION = 'web 32';
+  /** Throws away every saved copy of the app and loads it fresh from the server. */
+  async function getLatest() {
+    setStatus('Getting the latest version…', 0);
+    try { if (window.caches) { var keys = await caches.keys(); for (var i = 0; i < keys.length; i++) await caches.delete(keys[i]); } } catch (e) {}
+    try { if (navigator.serviceWorker) { var regs = await navigator.serviceWorker.getRegistrations(); for (var j = 0; j < regs.length; j++) await regs[j].unregister(); } } catch (e) {}
+    location.replace(location.pathname + '?fresh=' + Date.now());
+  }
+  /** Asks the server which version is current; when it is newer than this page, refreshes to it. */
+  function checkVersion() {
+    if (!navigator.onLine) return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (v) {
+      if (v && v.version && v.version !== APP_VERSION) {
+        var last = 0; try { last = +localStorage.getItem('oto.lastAutoUpdate') || 0; } catch (e) {}
+        if (Date.now() - last < 5 * 60 * 1000) return; // never loop
+        try { localStorage.setItem('oto.lastAutoUpdate', String(Date.now())); } catch (e) {}
+        getLatest();
+      }
+    }).catch(function () {});
+  }
   var filter = { shelf: 'reading', value: null };
   try { var sf = JSON.parse(localStorage.getItem('oto.filter') || 'null'); if (sf && sf.shelf) filter = sf; } catch (e) {}
   function rememberFilter() { try { localStorage.setItem('oto.filter', JSON.stringify(filter)); } catch (e) {} }
@@ -684,6 +703,7 @@
         if (i.dataset.act === 'add') $('addInput').click();
         else if (i.dataset.act === 'open') $('fileInput').click();
         else if (i.dataset.act === 'settings') settings();
+        else if (i.dataset.act === 'update') getLatest();
       };
     });
     $('addInput').onchange = function () { addBooks(Array.prototype.slice.call(this.files)); this.value = ''; };
@@ -728,6 +748,8 @@
     window.addEventListener('offline', offlineNote);
     window.addEventListener('online', function () { setStatus('Back online.', 2000); loadFromDrive(true); });
     offlineNote();
+    checkVersion(); setInterval(checkVersion, 30 * 60 * 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) checkVersion(); });
     if (!Drive.clientId()) { $('setup').classList.remove('hidden'); return; }
     var tries = 0;
     (function waitGoogle() { if (window.google && google.accounts) loadFromDrive(false); else if (tries++ < 50) setTimeout(waitGoogle, 200); else showNotice('Google sign-in did not load. Check the connection and reload.'); })();
