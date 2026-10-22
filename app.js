@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 38';
+  var APP_VERSION = 'web 39';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -79,7 +79,9 @@
     if (!b.entry) { b.entry = { title: b.title, author: b.author, progress: 0, position: null, status: 0, favorite: false, lastOpened: 0, updated: 0, trashed: false, collections: [], bookmarks: [] }; lib.entries[b.fp] = b.entry; }
     return b.entry;
   }
-  function touch(b) { var e = entryOf(b); e.updated = Date.now(); dirty[b.fp] = 1; scheduleSave(); saveCache(); }
+  function saveDirty() { try { localStorage.setItem('oto.dirty', JSON.stringify(Object.keys(dirty))); } catch (e) {} }
+  try { JSON.parse(localStorage.getItem('oto.dirty') || '[]').forEach(function (fp) { dirty[fp] = 1; }); } catch (e) {}
+  function touch(b) { var e = entryOf(b); e.updated = Date.now(); dirty[b.fp] = 1; saveDirty(); scheduleSave(); saveCache(); }
 
   // ---------- persistence ----------
   function saveCache() { try { var t = JSON.stringify(lib); if (t.length < 4000000) localStorage.setItem('oto.lib', t); else localStorage.removeItem('oto.lib'); } catch (e) {} }
@@ -101,11 +103,13 @@
       var text = serializeLibrary(lib.entries);
       await Drive.writeText(lib.fileId, text);
       fps.forEach(function (f) { delete dirty[f]; });
+      saveDirty();
       try { lib.remoteModified = await Drive.modified(lib.fileId); } catch (e) {}
       setStatus('Saved to Google Drive', 2500);
     } catch (e) {
-      setStatus('Could not save: ' + e.message + ' (will retry)', 6000);
-      scheduleSave();
+      // offline: the changes stay marked and go up the moment the connection is back (and after a reload)
+      setStatus(navigator.onLine ? 'Could not save: ' + e.message + ' (will retry)' : 'Offline: your changes are kept and sync when the connection is back', 6000);
+      if (navigator.onLine) scheduleSave();
     }
     saveCache();
   }
@@ -378,12 +382,23 @@
       '<label>Title <input type="text" id="edTitle" value="' + esc(b.title) + '"></label><label>Author <input type="text" id="edAuthor" value="' + esc(b.author) + '"></label>' +
       '<div class="row">' + (b.file ? '<a class="textBtn" target="_blank" rel="noopener" href="https://drive.google.com/file/d/' + b.file.id + '/view">Open in Drive</a>' : '') +
       '<button class="textBtn" id="edTrash">' + (e.trashed ? 'Restore from trash' : 'Move to Trash') + '</button>' +
-      '<button class="textBtn" id="edRemove">' + (e.status === STATUS.READING ? 'Remove from Reading Now' : '') + '</button></div>';
+      '<button class="textBtn" id="edRemove">' + (e.status === STATUS.READING ? 'Remove from Reading Now' : '') + '</button>' +
+      (b.file ? '<button class="textBtn" id="edKeep">Keep on this device (read offline)</button>' : '') + '</div>';
     dialog(html, function () {
       e.title = $('edTitle').value.trim() || b.title; e.author = $('edAuthor').value.trim(); b.title = e.title; b.author = e.author; touch(b); refreshRow(b, el);
     });
     $('edTrash').onclick = function () { var snap = snapshot(b); e.trashed = !e.trashed; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); if (e.trashed) offerUndo('Moved to Trash', function () { restore(b, snap); }); };
     $('edRemove').onclick = function () { var snap = snapshot(b); e.status = STATUS.NONE; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); offerUndo('Removed from Reading Now', function () { restore(b, snap); }); };
+    var keepBtn = $('edKeep');
+    if (keepBtn) keepBtn.onclick = function () {
+      keepBtn.textContent = 'Downloading…';
+      idbGet('files', b.file.id).then(function (have) {
+        if (have) { keepBtn.textContent = 'Kept on this device'; return; }
+        return Drive.bytes(b.file.id, function (got, total) { keepBtn.textContent = 'Downloading… ' + Math.round(got / 1048576) + ' MB'; }).then(function (buf) {
+          return idbPut('files', b.file.id, buf).then(function () { keepBtn.textContent = 'Kept on this device'; });
+        });
+      }).catch(function (e) { keepBtn.textContent = 'Could not download: ' + e.message; });
+    };
   }
 
   // ---------- covers (cached once a book has been opened) ----------
@@ -752,7 +767,7 @@
     document.title = 'OtoReader';
     function offlineNote() { if (!navigator.onLine) setStatus('No internet connection: this is the saved copy of your library. It refreshes when the connection is back.', 0); }
     window.addEventListener('offline', offlineNote);
-    window.addEventListener('online', function () { setStatus('Back online.', 2000); loadFromDrive(true); });
+    window.addEventListener('online', function () { setStatus('Back online: syncing…', 2000); flush().then(function () { loadFromDrive(true); }); });
     offlineNote();
     checkVersion(); setInterval(checkVersion, 30 * 60 * 1000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) checkVersion(); });
