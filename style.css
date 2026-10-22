@@ -10,7 +10,7 @@ button { font: inherit; cursor: pointer; }
 .iconBtn { background: none; border: 0; color: inherit; font-size: 22px; width: 44px; height: 44px; border-radius: 22px; display: inline-flex; align-items: center; justify-content: center; }
 .iconBtn svg { width: 24px; height: 24px; fill: currentColor; }
 .iconBtn:hover { background: rgba(255,255,255,.1); }
-.textBtn { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 8px 12px; border-radius: 6px; }
+.textBtn { background: none; text-decoration: none; display: inline-block; border: 0; color: var(--accent); font-weight: 600; padding: 8px 12px; border-radius: 6px; }
 .textBtn.small { padding: 2px 8px; font-size: 13px; }
 .primary { background: var(--accent); color: #1A1A1A; border: 0; font-weight: 700; padding: 10px 18px; border-radius: 6px; }
 #app { display: flex; flex-direction: column; height: 100%; }
