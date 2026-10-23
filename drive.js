@@ -18,12 +18,19 @@
   };
   D.setClientId = function (id) { try { localStorage.setItem('oto.clientId', id.trim()); } catch (e) {} };
   D.signedIn = function () { return !!token && expires > Date.now(); };
-  D.signOut = function () { token = null; expires = 0; try { localStorage.removeItem('oto.token'); sessionStorage.removeItem('oto.token'); localStorage.removeItem('oto.signedIn'); } catch (e) {} };
+  D.signOut = function () { token = null; expires = 0; try { localStorage.removeItem('oto.token'); sessionStorage.removeItem('oto.token'); localStorage.removeItem('oto.signedIn'); localStorage.removeItem('oto.account'); } catch (e) {} };
   /** True once the person signed in on this computer (until Sign out); a new token is then fetched silently. */
   D.wantsSignIn = function () { try { return localStorage.getItem('oto.signedIn') === '1'; } catch (e) { return false; } };
 
   /** Milliseconds until the current token runs out (0 when signed out). Google tokens last an hour. */
   D.expiresIn = function () { return token ? Math.max(0, expires - Date.now()) : 0; };
+
+  /** Inside the desktop app (its preload says so): Google's small window opens there without a click. */
+  D.isDesktop = function () { return !!(window.otoDesktop && window.otoDesktop.desktop); };
+  /** The Google account signed in last, so a quiet renewal names it and never shows the account chooser. */
+  D.account = function () { try { return localStorage.getItem('oto.account') || ''; } catch (e) { return ''; } };
+  /** What went wrong at the last quiet renewal ('' when it worked), shown on the yellow bar. */
+  D.lastError = '';
 
   var pending = null;
   function getToken(prompt) {
@@ -32,27 +39,45 @@
       if (!window.google || !google.accounts || !google.accounts.oauth2) { reject(new Error('Google sign-in script not loaded yet. Check the internet connection and try again.')); return; }
       var id = D.clientId();
       if (!id) { reject(new Error('No client ID')); return; }
-      tokenClient = google.accounts.oauth2.initTokenClient({
+      var hint = D.account();
+      var cfg = {
         client_id: id,
         scope: SCOPE,
         callback: function (r) {
-          if (!r || r.error) { reject(new Error((r && (r.error_description || r.error)) || 'Sign-in failed')); return; }
+          if (!r || r.error) { D.lastError = (r && (r.error_description || r.error)) || 'Sign-in failed'; reject(new Error(D.lastError)); return; }
           token = r.access_token;
           expires = Date.now() + (r.expires_in ? r.expires_in * 1000 : 3500000);
           try { localStorage.setItem('oto.token', JSON.stringify({ token: token, expires: expires })); localStorage.setItem('oto.signedIn', '1'); } catch (e) {}
-          D.needsTap = false;
+          D.needsTap = false; D.lastError = '';
           try { document.dispatchEvent(new Event('oto-signed-in')); } catch (e) {}
           resolve(token);
+          rememberAccount();
         },
         error_callback: function (e) {
           var t = e && e.type;
+          D.lastError = t === 'popup_failed_to_open' ? 'the browser blocked the Google window' : (e && e.message ? e.message : 'Sign-in window closed');
           reject(new Error(t === 'popup_failed_to_open' ? 'The browser blocked the Google window: press Sync once more' : (e && e.message ? e.message : 'Sign-in window closed')));
         },
-      });
-      tokenClient.requestAccessToken({ prompt: prompt });
+      };
+      if (hint) cfg.hint = hint;
+      tokenClient = google.accounts.oauth2.initTokenClient(cfg);
+      // with the account named, a quiet renewal (prompt '') closes its window by itself instead of asking which account
+      tokenClient.requestAccessToken(hint ? { prompt: prompt, hint: hint } : { prompt: prompt });
     }).finally(function () { pending = null; });
     return pending;
   }
+
+  /** Asks Drive whose account the token belongs to, once, so later renewals can name it. */
+  var rememberingAccount = false;
+  function rememberAccount() {
+    if (D.account() || rememberingAccount || !token) return;
+    rememberingAccount = true;
+    fetch(API + 'about?fields=user(emailAddress)', { headers: { Authorization: 'Bearer ' + token } }).then(function (r) { return r.json(); }).then(function (j) {
+      var mail = j && j.user && j.user.emailAddress;
+      if (mail) try { localStorage.setItem('oto.account', mail); } catch (e) {}
+    }).catch(function () {}).finally(function () { rememberingAccount = false; });
+  }
+  rememberAccount();
 
   /** Gets an access token. interactive=false renews quietly (works once consent was given; a browser may need it to happen during a click). */
   D.signIn = function (interactive) {
@@ -75,7 +100,9 @@
   D.renewIfDue = renewIfDue;
   /** True when a quiet renewal failed outside a click; cleared by the next successful token. */
   D.needsTap = false;
-  setInterval(function () { if (!document.hidden) renewIfDue(); }, 60 * 1000);
+  // the desktop app opens Google's window at any time, so it renews even while minimised; a browser only
+  // while the page is shown (and only without a click when pop-ups are allowed for this site)
+  setInterval(function () { if (!document.hidden || D.isDesktop()) renewIfDue(); }, 60 * 1000);
   document.addEventListener('pointerdown', renewIfDue, true);
   document.addEventListener('keydown', renewIfDue, true);
 

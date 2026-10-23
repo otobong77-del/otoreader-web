@@ -1,7 +1,7 @@
 {
   "name": "otoreader-desktop",
   "productName": "OtoReader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OtoReader for the desktop: your ebook library, synced with your phone through Google Drive.",
   "main": "main.js",
   "private": true,

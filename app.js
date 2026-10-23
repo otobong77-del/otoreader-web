@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 43';
+  var APP_VERSION = 'web 44';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -190,8 +190,16 @@
     if ($('tapBar')) return;
     var bar = document.createElement('div'); bar.id = 'tapBar';
     bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:60;background:#F2B134;color:#1C1C1C;padding:10px 16px;text-align:center;font-weight:600;cursor:pointer';
-    bar.textContent = 'Google needs one tap to keep syncing — tap here';
+    var why = Drive.lastError ? ' (' + Drive.lastError + ')' : '';
+    bar.textContent = 'Google needs one tap to keep syncing — tap here' + why;
     bar.onclick = function () { Drive.signIn(false).then(function () { hideTapBar(); loadFromDrive(true, true); }).catch(function (e) { setStatus('Google: ' + e.message, 6000); }); };
+    // a browser opens Google's little renewal window without a tap only when pop-ups are allowed for this site
+    if (!Drive.isDesktop()) {
+      var how = document.createElement('div');
+      how.style.cssText = 'font-weight:400;font-size:13px;margin-top:4px';
+      how.textContent = 'To stop this tap: click the lock (or tune) icon left of the address, open Site settings, and set “Pop-ups and redirects” to Allow. Google then renews on its own every hour.';
+      bar.appendChild(how);
+    }
     document.body.appendChild(bar);
   }
   function hideTapBar() { var b = $('tapBar'); if (b) b.parentNode.removeChild(b); }

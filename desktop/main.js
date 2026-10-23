@@ -17,18 +17,24 @@ function createWindow() {
     title: 'OtoReader',
     icon: path.join(__dirname, 'build', 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    // backgroundThrottling off: the page's hourly Google renewal and its sync checks keep running while minimised
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
   });
   win.webContents.setUserAgent(CHROME_UA);
   // Google's sign-in opens a small popup window and talks back to the page: allow it, same user agent.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\/(accounts\.google\.com|.*\.googleusercontent\.com|.*\.google\.com)\//.test(url)) {
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 680, autoHideMenuBar: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } } };
+      // opened hidden: the hourly renewal closes it by itself in a moment; one that needs the person (a sign-in,
+      // a consent screen, an account question) is still open after two seconds and is shown then
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 680, show: false, autoHideMenuBar: true, parent: win, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } } };
     }
     shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-create-window', (child) => { child.webContents.setUserAgent(CHROME_UA); });
+  win.webContents.on('did-create-window', (child) => {
+    child.webContents.setUserAgent(CHROME_UA);
+    setTimeout(() => { if (!child.isDestroyed() && !child.isVisible()) child.show(); }, 2000);
+  });
   win.loadURL(PAGE);
   win.on('page-title-updated', (e) => { e.preventDefault(); });
 }
