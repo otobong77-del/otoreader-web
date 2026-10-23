@@ -176,6 +176,20 @@
     return out;
   };
 
+  /** One cover by its exact name ("<book file name>.jpg") when the full Covers listing is not at hand; misses are remembered for the session. */
+  var coversDirId = null, coverMiss = {};
+  D.findCoverId = async function (folderId, name) {
+    if (!folderId || !name || coverMiss[name]) return null;
+    if (!coversDirId) {
+      var dirs = await D.list("'" + folderId + "' in parents and name = 'Covers' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", 'id,name');
+      if (!dirs.length) return null;
+      coversDirId = dirs[0].id;
+    }
+    var hits = await D.list("'" + coversDirId + "' in parents and name = '" + name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "' and trashed = false", 'id,name');
+    if (!hits.length) { coverMiss[name] = 1; return null; }
+    return hits[0].id;
+  };
+
   /** Makes the OtoReader folder, its Books folder and an empty library.json when the phone has not synced yet. */
   var ensuring = null;
   D.ensureLibrary = function () { if (!ensuring) ensuring = ensureLibraryOnce().finally(function () { ensuring = null; }); return ensuring; };

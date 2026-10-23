@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#005C75">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css??v=42">
-<script src="fflate.min.js??v=42"></script>
+<link rel="stylesheet" href="style.css??v=43">
+<script src="fflate.min.js??v=43"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -73,6 +73,7 @@
   <footer id="status" class="hidden"></footer>
   <input id="fileInput" type="file" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
   <input id="addInput" type="file" multiple accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
+  <input id="convInput" type="file" multiple accept=".epub,.txt,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
   <div id="dropHint" class="hidden">Drop books here to add them to your library</div>
 </div>
 
@@ -123,13 +124,14 @@
 
 <div id="dialog" class="hidden"><div class="dialogBox"><div id="dialogBody"></div><div class="row right"><button id="dialogCancel" class="textBtn">Cancel</button><button id="dialogOk" class="primary">Save</button></div></div></div>
 
-<script src="config.js??v=42"></script>
-<script src="reader.bundle.js??v=42"></script>
-<script src="drive.js??v=42"></script>
-<script src="epub.js??v=42"></script>
-<script src="formats.js??v=42"></script>
-<script src="tts.js??v=42"></script>
-<script src="app.js??v=42"></script>
+<script src="config.js??v=43"></script>
+<script src="reader.bundle.js??v=43"></script>
+<script src="drive.js??v=43"></script>
+<script src="epub.js??v=43"></script>
+<script src="formats.js??v=43"></script>
+<script src="tts.js??v=43"></script>
+<script src="convert.js??v=43"></script>
+<script src="app.js??v=43"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").then(function (reg) { try { reg.update(); setInterval(function () { reg.update(); }, 30 * 60 * 1000); } catch (e) {} }).catch(function () {});

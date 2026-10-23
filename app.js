@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 42';
+  var APP_VERSION = 'web 43';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -47,6 +47,7 @@
     series: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
     collections: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8zm0 3h4v2h-4zm0-6h8v2h-8z',
     notes: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2.5L18.5 9H13V4.5zM8 13h8v2H8v-2zm0 4h8v2H8v-2zm0-8h3v2H8V9z',
+    convert: 'M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z',
     layers: 'M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z',
     trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
     settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
@@ -85,8 +86,16 @@
   function touch(b) { var e = entryOf(b); e.updated = Date.now(); dirty[b.fp] = 1; saveDirty(); scheduleSave(); saveCache(); }
 
   // ---------- persistence ----------
-  function saveCache() { try { var t = JSON.stringify(lib); if (t.length < 4000000) localStorage.setItem('oto.lib', t); else localStorage.removeItem('oto.lib'); } catch (e) {} }
+  // a library of tens of thousands of books (with its file and cover listings) is far over localStorage's limit: it lives in IndexedDB
+  function saveCache() { try { var t = JSON.stringify(lib); if (t.length < 4000000) localStorage.setItem('oto.lib', t); else localStorage.removeItem('oto.lib'); idbPut('meta', 'lib', t); } catch (e) {} }
   function loadCache() { try { var c = JSON.parse(localStorage.getItem('oto.lib') || 'null'); if (c && c.entries) lib = c; } catch (e) {} }
+  function loadCacheIdb() {
+    return idbGet('meta', 'lib').then(function (t) {
+      if (!t || lib.loadedAt) return false;
+      try { var c = JSON.parse(t); if (c && c.entries && !lib.loadedAt) { lib = c; return true; } } catch (e) {}
+      return false;
+    });
+  }
 
   var saveTimer = null;
   function scheduleSave() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(flush, 4000); }
@@ -216,7 +225,8 @@
         var files = await Drive.listBooks(found.booksId);
         lib.files = {};
         files.forEach(function (f) { lib.files[fingerprint(f.name, +f.size || 0)] = { id: f.id, name: f.name, size: +f.size || 0, modifiedTime: f.modifiedTime }; });
-        try { lib.covers = await Drive.listCovers(found.folderId); } catch (e) { lib.covers = lib.covers || {}; }
+        setStatus('Listing covers…');
+        try { lib.covers = await Drive.listCovers(found.folderId); } catch (e) { lib.covers = lib.covers || {}; setStatus('Covers could not be listed (' + e.message + '); they are looked up one by one instead.', 8000); }
       }
       lib.loadedAt = Date.now();
       saveCache(); rebuild(); buildDrawer(); render();
@@ -315,6 +325,8 @@
     item('Quotes & notes', 'notes', 'notes', null);
     item('Trash', 'trash', 'trash', null);
     sep();
+    var cv = document.createElement('div'); cv.className = 'drawerItem'; cv.innerHTML = svg('convert') + '<span>CONVERTER</span>';
+    cv.onclick = function () { closeDrawer(); converter(); }; d.appendChild(cv);
     var s = document.createElement('div'); s.className = 'drawerItem'; s.innerHTML = svg('settings') + '<span>Settings</span>';
     s.onclick = function () { closeDrawer(); settings(); }; d.appendChild(s);
   }
@@ -424,12 +436,16 @@
       '<div class="row">' + (b.file ? '<a class="textBtn" target="_blank" rel="noopener" href="https://drive.google.com/file/d/' + b.file.id + '/view">Open in Drive</a>' : '') +
       '<button class="textBtn" id="edTrash">' + (e.trashed ? 'Restore from trash' : 'Move to Trash') + '</button>' +
       '<button class="textBtn" id="edRemove">' + (e.status === STATUS.READING ? 'Remove from Reading Now' : '') + '</button>' +
-      (b.file ? '<button class="textBtn" id="edKeep">Keep on this device (read offline)</button>' : '') + '</div>';
+      (b.file ? '<button class="textBtn" id="edKeep">Keep on this device (read offline)</button>' : '') + '</div>' +
+      (b.file && Books.canOpen(b.name) && !/\.pdf$/i.test(b.name) ? '<div class="row">' + (!/\.epub$/i.test(b.name) ? '<button class="textBtn" id="edEpub">Convert to EPUB</button>' : '') + (!/\.docx$/i.test(b.name) ? '<button class="textBtn" id="edDocx">Convert to Word</button>' : '') + '<button class="textBtn" id="edPdf">Save as PDF (print)</button></div>' : '');
     dialog(html, function () {
       e.title = $('edTitle').value.trim() || b.title; e.author = $('edAuthor').value.trim(); b.title = e.title; b.author = e.author; touch(b); refreshRow(b, el);
     });
     $('edTrash').onclick = function () { var snap = snapshot(b); e.trashed = !e.trashed; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); if (e.trashed) offerUndo('Moved to Trash', function () { restore(b, snap); }); };
     $('edRemove').onclick = function () { var snap = snapshot(b); e.status = STATUS.NONE; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); offerUndo('Removed from Reading Now', function () { restore(b, snap); }); };
+    if ($('edEpub')) $('edEpub').onclick = function () { convertLibraryBook(b, 'epub'); };
+    if ($('edDocx')) $('edDocx').onclick = function () { convertLibraryBook(b, 'docx'); };
+    if ($('edPdf')) $('edPdf').onclick = function () { convertLibraryBook(b, 'pdf'); };
     var keepBtn = $('edKeep');
     if (keepBtn) keepBtn.onclick = function () {
       keepBtn.textContent = 'Downloading…';
@@ -447,8 +463,8 @@
   function idb() {
     if (coverDb) return Promise.resolve(coverDb);
     return new Promise(function (res, rej) {
-      var r = indexedDB.open('otoreader', 1);
-      r.onupgradeneeded = function () { r.result.createObjectStore('covers'); r.result.createObjectStore('files'); };
+      var r = indexedDB.open('otoreader', 2);
+      r.onupgradeneeded = function () { var d = r.result; ['covers', 'files', 'meta'].forEach(function (n) { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n); }); };
       r.onsuccess = function () { coverDb = r.result; res(coverDb); };
       r.onerror = function () { rej(r.error); };
     });
@@ -461,8 +477,16 @@
     idbGet('covers', b.fp).then(function (blob) {
       if (blob) { showCover(el, blob); return; }
       var id = lib.covers && (lib.covers[(b.name + '.jpg').toLowerCase()] || lib.covers[b.name + '.jpg']);
-      if (!id || !Drive.signedIn()) return;
-      coverQueue.push({ b: b, el: el, id: id }); pumpCovers();
+      if (!Drive.signedIn()) return;
+      if (id) { coverQueue.push({ b: b, el: el, id: id }); pumpCovers(); return; }
+      // not in the listing (or no listing yet): ask Drive for this one cover by name
+      if (!lib.folderId || !b.file) return;
+      Drive.findCoverId(lib.folderId, b.name + '.jpg').then(function (found) {
+        if (!found) return;
+        if (!lib.covers) lib.covers = {};
+        lib.covers[(b.name + '.jpg').toLowerCase()] = found;
+        if (document.body.contains(el)) { coverQueue.push({ b: b, el: el, id: found }); pumpCovers(); }
+      }).catch(function () {});
     });
   }
   function pumpCovers() { // a few downloads at a time, only for rows that are on screen
@@ -477,6 +501,65 @@
         }).catch(function () {}).then(function () { coverBusy--; pumpCovers(); });
       })(job);
     }
+  }
+
+  // ---------- CONVERTER ----------
+  var convOpts = { save: true, add: true, trash: true };
+  try { var co = JSON.parse(localStorage.getItem('oto.convert') || 'null'); if (co) convOpts = co; } catch (e) {}
+  function converter() {
+    var html = '<h3 style="margin-top:0">CONVERTER</h3><p class="muted">Turns documents into EPUB or Word files right here in the browser, or into a PDF through the print dialog (choose Save as PDF there). Pick files from this computer, or use Convert on a book\'s ⋮ menu. Converting runs while you keep using the page.</p>' +
+      '<div class="row"><button class="textBtn" id="cvEpub">Pick files → EPUB</button><button class="textBtn" id="cvDocx">Pick files → Word</button><button class="textBtn" id="cvPdf">Pick a file → PDF</button></div>' +
+      '<label><input type="checkbox" id="cvSave"' + (convOpts.save ? ' checked' : '') + '> Save the result on this computer</label>' +
+      '<label><input type="checkbox" id="cvAdd"' + (convOpts.add ? ' checked' : '') + '> Add the result to the library in Google Drive (the phone gets it too)</label>' +
+      '<label><input type="checkbox" id="cvTrash"' + (convOpts.trash ? ' checked' : '') + '> Move the original library book to the trash after converting (30 days to get it back)</label>' +
+      '<p class="muted" id="cvStatus"></p><p class="muted">Converts EPUB, TXT, Kindle (MOBI, AZW, AZW3), Word (DOCX), FB2, RTF, ODT and comics (CBZ, CBR). PDFs are converted on the phone, which reads their text on Android 15 and later.</p>';
+    dialog(html, null, 'Close');
+    ['cvSave', 'cvAdd', 'cvTrash'].forEach(function (id) { $(id).onchange = function () { convOpts = { save: $('cvSave').checked, add: $('cvAdd').checked, trash: $('cvTrash').checked }; try { localStorage.setItem('oto.convert', JSON.stringify(convOpts)); } catch (e) {} }; });
+    $('cvEpub').onclick = function () { pickForConvert('epub'); };
+    $('cvDocx').onclick = function () { pickForConvert('docx'); };
+    $('cvPdf').onclick = function () { pickForConvert('pdf'); };
+  }
+  var convTarget = 'epub';
+  function pickForConvert(target) { convTarget = target; $('convInput').multiple = target !== 'pdf'; $('convInput').click(); }
+  async function convertFiles(files, target) {
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!Books.canOpen(f.name) || /\.pdf$/i.test(f.name)) { setStatus('Cannot convert ' + f.name + ' here (PDFs convert on the phone).', 6000); continue; }
+      try { await convertBuffer(await f.arrayBuffer(), f.name, target, null); } catch (e) { setStatus('Could not convert ' + f.name + ': ' + e.message, 8000); }
+    }
+  }
+  /** One document → EPUB / Word (saved, and/or added to Drive) or the print dialog for a PDF. [libraryBook] is set when it came from the library. */
+  async function convertBuffer(buf, name, target, libraryBook) {
+    var st = function (t, ms) { setStatus(t, ms || 0); var s = $('cvStatus'); if (s) s.textContent = t; };
+    st('Reading ' + name + '…');
+    var doc = Books.open(buf, name);
+    var title = (libraryBook && libraryBook.title) || doc.title || stem(name), author = (libraryBook && libraryBook.author) || (doc.authors || []).join(', ');
+    if (target === 'pdf') { Convert.print(doc, title); st('The print dialog is open: choose Save as PDF.', 8000); return; }
+    var started = Date.now();
+    var prog = function (i, n) { var left = i >= 2 ? ' · about ' + (Math.round((Date.now() - started) / i * (n - i) / 1000) + 1) + ' s left' : ''; st('Converting ' + title + ': part ' + (i + 1) + ' of ' + n + left); };
+    var bytes = target === 'docx' ? await Convert.toDocx(doc, title, author, prog) : await Convert.toEpub(doc, title, author, prog);
+    var outName = name.replace(/\.[^.]+$/, '') + '.' + target;
+    var mime = target === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/epub+zip';
+    var file = new File([bytes], outName, { type: mime });
+    if (convOpts.save) { var a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = outName; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 10000); }
+    if (convOpts.add && Drive.signedIn()) {
+      await addBooks([file]);
+      var fp = fingerprint(outName, file.size), src = libraryBook ? entryOf(libraryBook) : null, ne = lib.entries[fp];
+      if (src && ne) { ne.title = src.title; ne.author = src.author; ne.status = src.status; ne.favorite = src.favorite; ne.collections = (src.collections || []).slice(); ne.updated = Date.now(); dirty[fp] = 1; }
+      if (libraryBook && convOpts.trash) { src.trashed = true; src.updated = Date.now(); dirty[libraryBook.fp] = 1; }
+      saveDirty(); scheduleSave(); rebuild(); buildDrawer(); render();
+    }
+    st('Converted ' + name + ' → ' + outName + ' in ' + Math.round((Date.now() - started) / 1000) + ' s' + (convOpts.save ? ' (saved to Downloads)' : ''), 8000);
+  }
+  async function convertLibraryBook(b, target) {
+    if (!b.file) { setStatus('This book has no file in Drive yet.', 5000); return; }
+    $('dialog').classList.add('hidden');
+    try {
+      setStatus('Downloading ' + b.name + '…', 0);
+      var buf = await idbGet('files', b.file.id);
+      if (!buf) buf = await Drive.bytes(b.file.id, function (got, total) { setStatus('Downloading ' + b.name + ': ' + sizeText(got) + (total ? ' of ' + sizeText(total) : ''), 0); });
+      await convertBuffer(buf, b.name, target, b);
+    } catch (e) { setStatus('Could not convert: ' + e.message, 8000); }
   }
 
   // ---------- settings ----------
@@ -774,6 +857,7 @@
       };
     });
     $('addInput').onchange = function () { addBooks(Array.prototype.slice.call(this.files)); this.value = ''; };
+    $('convInput').onchange = function () { convertFiles(Array.prototype.slice.call(this.files), convTarget); this.value = ''; };
     var dragDepth = 0;
     document.addEventListener('dragenter', function (ev) { if (ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types, 'Files') >= 0 && $('reader').classList.contains('hidden')) { dragDepth++; $('dropHint').classList.remove('hidden'); } });
     document.addEventListener('dragleave', function () { if (--dragDepth <= 0) { dragDepth = 0; $('dropHint').classList.add('hidden'); } });
@@ -809,6 +893,7 @@
     if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function () { if (!$('ttsPanel').classList.contains('hidden')) fillVoices(); };
 
     loadCache(); rebuild(); buildDrawer(); render();
+    if (!lib.loadedAt) loadCacheIdb().then(function (got) { if (got) { rebuild(); buildDrawer(); render(); } });
     document.title = 'OtoReader';
     function offlineNote() { if (!navigator.onLine) setStatus('No internet connection: this is the saved copy of your library. It refreshes when the connection is back.', 0); }
     window.addEventListener('offline', offlineNote);
