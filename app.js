@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 41';
+  var APP_VERSION = 'web 42';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -174,15 +174,33 @@
   window.addEventListener('focus', function () { checkForUpdates(false); });
 
   // ---------- Drive loading ----------
+  // Google hands out tokens for an hour; renewing one quietly needs its small window, which browsers allow only
+  // during a click. So the page never signs out by itself: when a renewal could not happen, a bar asks for one
+  // tap, and that tap renews the token with no account screen.
+  function showTapBar() {
+    if ($('tapBar')) return;
+    var bar = document.createElement('div'); bar.id = 'tapBar';
+    bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:60;background:#F2B134;color:#1C1C1C;padding:10px 16px;text-align:center;font-weight:600;cursor:pointer';
+    bar.textContent = 'Google needs one tap to keep syncing — tap here';
+    bar.onclick = function () { Drive.signIn(false).then(function () { hideTapBar(); loadFromDrive(true, true); }).catch(function (e) { setStatus('Google: ' + e.message, 6000); }); };
+    document.body.appendChild(bar);
+  }
+  function hideTapBar() { var b = $('tapBar'); if (b) b.parentNode.removeChild(b); }
+  document.addEventListener('oto-needs-tap', showTapBar);
+  document.addEventListener('oto-signed-in', hideTapBar);
+  setInterval(function () { if (Drive.wantsSignIn() && Drive.clientId() && !Drive.signedIn() && !document.hidden) showTapBar(); }, 30 * 1000);
+
   async function loadFromDrive(force, quiet) {
     try {
       await Drive.signIn(false);
     } catch (e) {
+      if (Drive.wantsSignIn()) { showTapBar(); if (!quiet) setStatus('Google needs one tap to carry on (yellow bar at the top).', 8000); return; }
       $('accountBtn').classList.remove('hidden');
       if (!books.length) showNotice('Press <b>Sign in</b> at the top right to open your Google Drive library.');
       else setStatus('Google Drive: ' + e.message, 8000);
       return;
     }
+    hideTapBar();
     $('accountBtn').classList.add('hidden');
     setStatus('Looking for the OtoReader folder in Google Drive…');
     try {

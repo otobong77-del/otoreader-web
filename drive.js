@@ -40,6 +40,8 @@
           token = r.access_token;
           expires = Date.now() + (r.expires_in ? r.expires_in * 1000 : 3500000);
           try { localStorage.setItem('oto.token', JSON.stringify({ token: token, expires: expires })); localStorage.setItem('oto.signedIn', '1'); } catch (e) {}
+          D.needsTap = false;
+          try { document.dispatchEvent(new Event('oto-signed-in')); } catch (e) {}
           resolve(token);
         },
         error_callback: function (e) {
@@ -71,6 +73,8 @@
     getToken('').catch(function () {});
   }
   D.renewIfDue = renewIfDue;
+  /** True when a quiet renewal failed outside a click; cleared by the next successful token. */
+  D.needsTap = false;
   setInterval(function () { if (!document.hidden) renewIfDue(); }, 60 * 1000);
   document.addEventListener('pointerdown', renewIfDue, true);
   document.addEventListener('keydown', renewIfDue, true);
@@ -86,7 +90,13 @@
     opts = opts || {};
     opts.headers = headers(opts.headers);
     var r = await fetch(url, opts);
-    if (r.status === 401 && retry !== false) { D.signOut(); await D.signIn(false); return call(url, opts, false); }
+    if (r.status === 401 && retry !== false) {
+      // the token ran out: a quiet renewal needs Google's small window, which a browser only allows during a
+      // click; when it cannot open, the page stays signed in and asks for one tap (never for a new sign-in)
+      token = null; expires = 0;
+      try { await D.signIn(false); } catch (e) { D.needsTap = true; try { document.dispatchEvent(new Event('oto-needs-tap')); } catch (e2) {} throw new Error('Google needs one tap to carry on: tap the yellow bar'); }
+      return call(url, opts, false);
+    }
     if (!r.ok) {
       var text = '';
       try { text = (await r.json()).error.message; } catch (e) { text = r.statusText; }
