@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 45';
+  var APP_VERSION = 'web 46';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -38,6 +38,7 @@
   // the phone's icons, as inline SVG paths
   var ICON = {
     reading: 'M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z',
+    media: 'M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z',
     all: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z',
     star: 'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',
     starOn: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
@@ -291,11 +292,16 @@
     return Object.keys(m).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).map(function (k) { return { name: k, count: m[k] }; });
   }
   function count(shelf) { return books.filter(function (b) { return inShelf(b, shelf, null); }).length; }
+  var MEDIA_EXT = /\.(mp4|m4v|mkv|webm|mov|3gp|avi|wmv|mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
+  function isMedia(b) { return MEDIA_EXT.test(b.name || ''); }
   function inShelf(b, shelf, value) {
     var e = b.entry || {};
     if (shelf !== 'trash' && e.trashed) return false;
     if (e.vault) return false; // the phone's Privacy box: not on the web
+    // videos and audio have their own shelf; the book shelves leave them out, the shelves about your choices hold both
+    if (isMedia(b) && (shelf === 'all' || shelf === 'author' || shelf === 'series' || shelf === 'notes')) return false;
     switch (shelf) {
+      case 'media': return isMedia(b);
       case 'reading': return e.status === STATUS.READING;
       case 'all': return true;
       case 'favorites': return !!e.favorite;
@@ -310,7 +316,7 @@
     }
     return true;
   }
-  var titles = { reading: 'Reading Now', all: 'Books & documents', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', series: 'Series', format: 'Formats', notes: 'Quotes & notes', trash: 'Trash' };
+  var titles = { reading: 'Reading Now', all: 'Books & documents', media: 'Videos & audio', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', series: 'Series', format: 'Formats', notes: 'Quotes & notes', trash: 'Trash' };
   function buildDrawer() {
     var d = $('drawerItems'); d.innerHTML = '';
     function item(label, icon, shelf, value, sub) {
@@ -324,6 +330,7 @@
     function sep() { var s = document.createElement('div'); s.className = 'drawerSep'; d.appendChild(s); }
     item('Reading Now', 'reading', 'reading', null);
     item('Books & documents', 'all', 'all', null);
+    item('Videos & audio', 'media', 'media', null);
     item('Favorites', 'star', 'favorites', null);
     item('To Read', 'clock', 'toread', null);
     item('Have Read', 'doneAll', 'finished', null);
@@ -595,7 +602,30 @@
   function loadOpts() { try { return Object.assign({ theme: 0, size: 100, font: 0, line: 15, margin: 24, paged: true, justify: false, ttsRate: 1, ttsVoice: '' }, JSON.parse(localStorage.getItem('oto.opts') || '{}')); } catch (e) { return { theme: 0, size: 100, font: 0, line: 15, margin: 24, paged: true, justify: false, ttsRate: 1, ttsVoice: '' }; } }
   function saveOpts() { try { localStorage.setItem('oto.opts', JSON.stringify(opts)); } catch (e) {} }
 
+  /** Plays a video or audio file from its Drive copy in a simple overlay; the phone is the main player (its place does not sync from here). */
+  async function playMedia(b) {
+    if (!b.file) { setStatus('This file is on the phone only. Settings → Sync → "Copy videos and audio to Google Drive too" uploads it (large files).', 7000); return; }
+    var old = $('mediaOverlay'); if (old) old.remove();
+    setStatus('Downloading ' + b.name + '…', 0);
+    try {
+      var buf = await Drive.bytes(b.file.id, function (got, total) { setStatus('Downloading ' + b.name + '… ' + sizeText(got) + (total ? ' of ' + sizeText(total) : ''), 0); });
+      setStatus('', 1);
+      var video = /\.(mp4|m4v|mkv|webm|mov|3gp|avi|wmv)$/i.test(b.name);
+      var url = URL.createObjectURL(new Blob([buf]));
+      var wrap = document.createElement('div'); wrap.id = 'mediaOverlay';
+      wrap.style.cssText = 'position:fixed;inset:0;background:#000;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center';
+      var bar = document.createElement('div'); bar.style.cssText = 'position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:10px 14px;color:#fff;background:rgba(0,0,0,.6)';
+      var close = document.createElement('button'); close.className = 'textBtn'; close.textContent = '✕ Close'; close.style.color = '#fff';
+      var ttl = document.createElement('span'); ttl.textContent = b.title; bar.appendChild(close); bar.appendChild(ttl);
+      var el = document.createElement(video ? 'video' : 'audio'); el.controls = true; el.autoplay = true; el.src = url;
+      el.style.cssText = video ? 'max-width:100%;max-height:100%' : 'width:min(90vw,600px)';
+      wrap.appendChild(el); wrap.appendChild(bar); document.body.appendChild(wrap);
+      close.onclick = function () { el.pause(); URL.revokeObjectURL(url); wrap.remove(); };
+      el.onerror = function () { setStatus('The browser cannot play this file (' + b.format + '). MP4, WEBM, MP3, M4A, OGG and FLAC usually work.', 7000); };
+    } catch (e) { setStatus('Could not fetch the file: ' + e.message, 7000); }
+  }
   async function openBook(b) {
+    if (isMedia(b)) { playMedia(b); return; }
     if (!b.file) { setStatus('This book has not been uploaded from the phone yet. On the phone, Settings → Sync now (with "copy book files" on).', 6000); return; }
     var ext = b.name.toLowerCase().split('.').pop();
     if (!Books.canOpen(b.name)) { setStatus(b.format + ' books can be read on the phone for now; here: EPUB, Kindle (MOBI, AZW, AZW3), Word (DOCX), FB2, RTF, ODT, comics (CBZ, CBR), TXT and PDF.', 6000); return; }
