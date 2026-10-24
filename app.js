@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 46';
+  var APP_VERSION = 'web 47';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -45,6 +45,7 @@
     clock: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
     doneAll: 'M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z',
     person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+    tag: 'M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z',
     series: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
     collections: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8zm0 3h4v2h-4zm0-6h8v2h-8z',
     notes: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2.5L18.5 9H13V4.5zM8 13h8v2H8v-2zm0 4h8v2H8v-2zm0-8h3v2H8V9z',
@@ -142,7 +143,7 @@
     var bs = root.books || {};
     for (var fp in bs) {
       var o = bs[fp];
-      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, vault: !!o.vault, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [] };
+      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, vault: !!o.vault, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [], tags: o.tags || '', rating: +o.rating || 0 };
     }
     return out;
   }
@@ -152,6 +153,8 @@
       var e = entries[fp];
       bs[fp] = { title: e.title, author: e.author, series: e.series || '', progress: e.progress, position: e.position, status: e.status, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [], notes: e.notes || [] };
       if (e.vault) bs[fp].vault = true;
+      if (e.tags) bs[fp].tags = e.tags;
+      if (e.rating) bs[fp].rating = e.rating;
     }
     return JSON.stringify({ version: 1, written: Date.now(), books: bs }, null, 2);
   }
@@ -294,6 +297,7 @@
   function count(shelf) { return books.filter(function (b) { return inShelf(b, shelf, null); }).length; }
   var MEDIA_EXT = /\.(mp4|m4v|mkv|webm|mov|3gp|avi|wmv|mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
   function isMedia(b) { return MEDIA_EXT.test(b.name || ''); }
+  function tagsOf(e) { return (e && e.tags ? String(e.tags).split(',') : []).map(function (t) { return t.trim(); }).filter(Boolean); }
   function inShelf(b, shelf, value) {
     var e = b.entry || {};
     if (shelf !== 'trash' && e.trashed) return false;
@@ -310,13 +314,14 @@
       case 'collection': return value ? (e.collections || []).indexOf(value) >= 0 : (e.collections || []).length > 0;
       case 'author': return value ? b.author === value : true;
       case 'series': return value ? (e.series || '') === value : !!(e.series || '');
+      case 'tag': return value ? tagsOf(e).indexOf(value) >= 0 : tagsOf(e).length > 0;
       case 'format': return value ? b.format === value : true;
       case 'trash': return !!e.trashed;
       case 'notes': return !e.trashed && !!(e.notes && e.notes.length);
     }
     return true;
   }
-  var titles = { reading: 'Reading Now', all: 'Books & documents', media: 'Videos & audio', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', series: 'Series', format: 'Formats', notes: 'Quotes & notes', trash: 'Trash' };
+  var titles = { reading: 'Reading Now', all: 'Books & documents', media: 'Videos & audio', tag: 'Tags', favorites: 'Favorites', toread: 'To Read', finished: 'Have Read', collection: 'Collections', author: 'Authors', series: 'Series', format: 'Formats', notes: 'Quotes & notes', trash: 'Trash' };
   function buildDrawer() {
     var d = $('drawerItems'); d.innerHTML = '';
     function item(label, icon, shelf, value, sub) {
@@ -336,6 +341,7 @@
     item('Have Read', 'doneAll', 'finished', null);
     item('Authors', 'person', 'author', null);
     item('Series', 'series', 'series', null);
+    item('Tags', 'tag', 'tag', null);
     item('Collections', 'collections', 'collection', null);
     collections().forEach(function (c) { item(c.name, '', 'collection', c.name, true); });
     item('Formats', 'layers', 'format', null);
@@ -359,6 +365,7 @@
       newest: function (a, b) { return b.modified - a.modified || a.title.localeCompare(b.title); },
       title: function (a, b) { return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }); },
       author: function (a, b) { return (a.author || '￿').localeCompare(b.author || '￿', undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title); },
+      rating: function (a, b) { var ar = (a.entry && a.entry.rating) || 0, br = (b.entry && b.entry.rating) || 0; if (ar !== br) return br - ar; return a.title.localeCompare(b.title); },
     }[sort];
     return rows.sort(key);
   }
@@ -382,9 +389,9 @@
       });
       return;
     }
-    if ((filter.shelf === 'author' || filter.shelf === 'format' || filter.shelf === 'series') && !filter.value) {
+    if ((filter.shelf === 'author' || filter.shelf === 'format' || filter.shelf === 'series' || filter.shelf === 'tag') && !filter.value) {
       var groups = {};
-      books.forEach(function (b) { if (!b.entry || (!b.entry.trashed && !b.entry.vault)) { var k = filter.shelf === 'author' ? (b.author || 'Unknown author') : filter.shelf === 'series' ? ((b.entry && b.entry.series) || '') : b.format; if (k) groups[k] = (groups[k] || 0) + 1; } });
+      books.forEach(function (b) { if (!b.entry || (!b.entry.trashed && !b.entry.vault)) { var keys = filter.shelf === 'tag' ? tagsOf(b.entry) : [filter.shelf === 'author' ? (b.author || 'Unknown author') : filter.shelf === 'series' ? ((b.entry && b.entry.series) || '') : b.format]; keys.forEach(function (k) { if (k) groups[k] = (groups[k] || 0) + 1; }); } });
       Object.keys(groups).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).forEach(function (g) {
         var el = document.createElement('div'); el.className = 'book'; el.style.padding = '14px 16px';
         el.innerHTML = '<div class="info"><div class="title">' + esc(g) + '</div><div class="meta">' + groups[g] + ' books</div></div>';
@@ -415,7 +422,7 @@
       '<div class="cover" title="Open">' + esc(b.title) + '</div>' +
       '<div class="info"><div class="title">' + esc(b.title) + '</div>' +
       '<div class="author">' + esc(b.author || 'Unknown author') + '</div>' +
-      '<div class="meta">' + b.format + ', ' + sizeText(b.size) + (b.file ? '' : ' · not uploaded from the phone yet') + (e.trashed ? ' · in the trash' : '') + '</div>' +
+      '<div class="meta">' + b.format + ', ' + sizeText(b.size) + (e.rating ? ' · ★ ' + (+e.rating).toFixed(1) : '') + (b.file ? '' : ' · not uploaded from the phone yet') + (e.trashed ? ' · in the trash' : '') + '</div>' +
       '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
       '<div class="actions">' +
       '<button class="fav' + (e.favorite ? ' on' : '') + '" title="Favorite">' + svg(e.favorite ? 'starOn' : 'star') + '</button>' +
