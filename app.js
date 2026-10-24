@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 44';
+  var APP_VERSION = 'web 45';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -141,7 +141,7 @@
     var bs = root.books || {};
     for (var fp in bs) {
       var o = bs[fp];
-      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [] };
+      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, vault: !!o.vault, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [] };
     }
     return out;
   }
@@ -150,6 +150,7 @@
     for (var fp in entries) {
       var e = entries[fp];
       bs[fp] = { title: e.title, author: e.author, series: e.series || '', progress: e.progress, position: e.position, status: e.status, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [], notes: e.notes || [] };
+      if (e.vault) bs[fp].vault = true;
     }
     return JSON.stringify({ version: 1, written: Date.now(), books: bs }, null, 2);
   }
@@ -286,13 +287,14 @@
   // ---------- drawer ----------
   function collections() {
     var m = {};
-    books.forEach(function (b) { if (b.entry && !b.entry.trashed) (b.entry.collections || []).forEach(function (c) { m[c] = (m[c] || 0) + 1; }); });
+    books.forEach(function (b) { if (b.entry && !b.entry.trashed && !b.entry.vault) (b.entry.collections || []).forEach(function (c) { m[c] = (m[c] || 0) + 1; }); });
     return Object.keys(m).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).map(function (k) { return { name: k, count: m[k] }; });
   }
   function count(shelf) { return books.filter(function (b) { return inShelf(b, shelf, null); }).length; }
   function inShelf(b, shelf, value) {
     var e = b.entry || {};
     if (shelf !== 'trash' && e.trashed) return false;
+    if (e.vault) return false; // the phone's Privacy box: not on the web
     switch (shelf) {
       case 'reading': return e.status === STATUS.READING;
       case 'all': return true;
@@ -359,7 +361,7 @@
     if (filter.shelf === 'notes') {
       // every quote and note made on the phone, newest first, under its book; a click opens the book there
       var all = [];
-      books.forEach(function (b) { var e = b.entry; if (e && !e.trashed) (e.notes || []).forEach(function (n) { all.push({ b: b, n: n }); }); });
+      books.forEach(function (b) { var e = b.entry; if (e && !e.trashed && !e.vault) (e.notes || []).forEach(function (n) { all.push({ b: b, n: n }); }); });
       all.sort(function (x, y) { return (y.n.created || 0) - (x.n.created || 0); });
       if (!all.length) { list.innerHTML = '<p class="muted" style="text-align:center;padding:40px">No quotes or notes yet. Select text in a book on the phone and choose Quote or Note.</p>'; return; }
       all.forEach(function (it) {
@@ -375,7 +377,7 @@
     }
     if ((filter.shelf === 'author' || filter.shelf === 'format' || filter.shelf === 'series') && !filter.value) {
       var groups = {};
-      books.forEach(function (b) { if (!b.entry || !b.entry.trashed) { var k = filter.shelf === 'author' ? (b.author || 'Unknown author') : filter.shelf === 'series' ? ((b.entry && b.entry.series) || '') : b.format; if (k) groups[k] = (groups[k] || 0) + 1; } });
+      books.forEach(function (b) { if (!b.entry || (!b.entry.trashed && !b.entry.vault)) { var k = filter.shelf === 'author' ? (b.author || 'Unknown author') : filter.shelf === 'series' ? ((b.entry && b.entry.series) || '') : b.format; if (k) groups[k] = (groups[k] || 0) + 1; } });
       Object.keys(groups).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).forEach(function (g) {
         var el = document.createElement('div'); el.className = 'book'; el.style.padding = '14px 16px';
         el.innerHTML = '<div class="info"><div class="title">' + esc(g) + '</div><div class="meta">' + groups[g] + ' books</div></div>';
