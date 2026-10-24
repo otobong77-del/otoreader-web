@@ -8,7 +8,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 47';
+  var APP_VERSION = 'web 48';
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -610,6 +610,10 @@
   function saveOpts() { try { localStorage.setItem('oto.opts', JSON.stringify(opts)); } catch (e) {} }
 
   /** Plays a video or audio file from its Drive copy in a simple overlay; the phone is the main player (its place does not sync from here). */
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+  }
   async function playMedia(b) {
     if (!b.file) { setStatus('This file is on the phone only. Settings → Sync → "Copy videos and audio to Google Drive too" uploads it (large files).', 7000); return; }
     var old = $('mediaOverlay'); if (old) old.remove();
@@ -625,8 +629,32 @@
       var close = document.createElement('button'); close.className = 'textBtn'; close.textContent = '✕ Close'; close.style.color = '#fff';
       var ttl = document.createElement('span'); ttl.textContent = b.title; bar.appendChild(close); bar.appendChild(ttl);
       var el = document.createElement(video ? 'video' : 'audio'); el.controls = true; el.autoplay = true; el.src = url;
-      el.style.cssText = video ? 'max-width:100%;max-height:100%' : 'width:min(90vw,600px)';
-      wrap.appendChild(el); wrap.appendChild(bar); document.body.appendChild(wrap);
+      // chapter marks inside the file (audiobooks, films): a list to jump by, and the current one in the title bar
+      var chapters = (window.MediaChapters && window.MediaChapters.read(buf, b.name)) || [];
+      el.style.cssText = video ? ('max-width:100%;max-height:' + (chapters.length ? '55vh' : '100%')) : 'width:min(90vw,600px)';
+      wrap.appendChild(el);
+      if (chapters.length) {
+        var list = document.createElement('div');
+        list.style.cssText = 'width:min(90vw,600px);max-height:35vh;overflow:auto;margin-top:12px;color:#fff;font-size:14px;background:rgba(255,255,255,.06);border-radius:8px';
+        var rows = chapters.map(function (c, i) {
+          var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.08)';
+          row.innerHTML = '<span style="opacity:.7;min-width:56px;font-variant-numeric:tabular-nums">' + clock(c.start) + '</span><span></span>';
+          row.lastChild.textContent = c.title;
+          row.onclick = function () { el.currentTime = c.start / 1000; el.play(); };
+          list.appendChild(row); return row;
+        });
+        var current = -1;
+        el.addEventListener('timeupdate', function () {
+          var ms = el.currentTime * 1000, i = -1;
+          for (var k = 0; k < chapters.length; k++) if (chapters[k].start <= ms) i = k; else break;
+          if (i === current) return;
+          current = i;
+          rows.forEach(function (r, k) { r.style.background = k === i ? 'rgba(255,255,255,.14)' : ''; });
+          ttl.textContent = b.title + (i >= 0 ? ' · ' + chapters[i].title : '');
+        });
+        wrap.appendChild(list);
+      }
+      wrap.appendChild(bar); document.body.appendChild(wrap);
       close.onclick = function () { el.pause(); URL.revokeObjectURL(url); wrap.remove(); };
       el.onerror = function () { setStatus('The browser cannot play this file (' + b.format + '). MP4, WEBM, MP3, M4A, OGG and FLAC usually work.', 7000); };
     } catch (e) { setStatus('Could not fetch the file: ' + e.message, 7000); }
