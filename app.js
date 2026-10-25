@@ -8,7 +8,41 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 48';
+  var APP_VERSION = 'web 49';
+
+  // ---------- look and layout, the phone's choices (Settings → Appearance) ----------
+  // wallpapers and accents are the phone's palettes.xml, in the same order: [name, background, card, bar, text, muted, cover placeholder]
+  var WALLS = [['Teal, like ReadEra', '#04191F', '#1C3239', '#005C75', '#F0F4F5', '#9DB0B7', '#34546C'], ['Red', '#2A0A0E', '#3E1218', '#8B1A26', '#FBEDEE', '#D9A7AC', '#7A2F38'],
+    ['Gold', '#F3E2A9', '#FBEFC8', '#B8860B', '#2B1F05', '#6B5520', '#C9A74A'], ['Purple', '#160F24', '#241A38', '#5B3A8C', '#EEE8F5', '#B3A4C8', '#5E4487'],
+    ['Blue', '#0D1B2E', '#172940', '#1F4E8C', '#E8EDF5', '#9DAFC8', '#3B5C8A'], ['Dark green', '#0B1F14', '#16301F', '#1F6B3A', '#E9F3EC', '#9FC2AA', '#3A6B4A'],
+    ['Black', '#000000', '#161616', '#1E1E1E', '#F5F5F5', '#A8A8A8', '#3A3A3A'], ['Navy', '#061225', '#0F2140', '#10305E', '#E6ECF7', '#9AAAC6', '#2E4A78'],
+    ['Burgundy', '#1F0710', '#34101C', '#6E1436', '#F8E9EE', '#D3A5B5', '#7A3350'], ['Cream', '#F6F1E7', '#FFFFFF', '#6E5B3F', '#2A2318', '#6E6253', '#B9A98C'],
+    ['Charcoal', '#1A1D21', '#272B31', '#343A42', '#EDEFF2', '#A6ADB6', '#4A535E']];
+  var ACCENTS = [['Gold', '#F2B134'], ['Red', '#FF2E2E'], ['Purple', '#B57BFF'], ['Lavender', '#C9A5F5'], ['Teal', '#2FBFA8'], ['Light blue', '#7FB2F0'], ['Green', '#5BD06C'], ['Orange', '#FF8C32'], ['Pink', '#FF5CA8'], ['White', '#FFFFFF'], ['Silver', '#C0C8D0']];
+  var SHELVES = [['Reading Now', 'reading', 'reading'], ['Books & documents', 'all', 'all'], ['Videos & audio', 'media', 'media'], ['Favorites', 'star', 'favorites'], ['To Read', 'clock', 'toread'], ['Have Read', 'doneAll', 'finished'],
+    ['Authors', 'person', 'author'], ['Series', 'series', 'series'], ['Tags', 'tag', 'tag'], ['Collections', 'collections', 'collection'], ['Formats', 'layers', 'format'], ['Quotes & notes', 'notes', 'notes'], ['Trash', 'trash', 'trash']];
+  var ui = { wall: 0, accent: 0, order: [], hidden: [], startShelf: 'remember', openLast: false, autoReload: 0 };
+  try { Object.assign(ui, JSON.parse(localStorage.getItem('oto.ui') || '{}')); } catch (e) {}
+  function saveUi() { try { localStorage.setItem('oto.ui', JSON.stringify(ui)); } catch (e) {} }
+  function applyPalette() {
+    var w = WALLS[ui.wall] || WALLS[0], a = ACCENTS[ui.accent] || ACCENTS[0], r = document.documentElement.style;
+    r.setProperty('--bg', w[1]); r.setProperty('--card', w[2]); r.setProperty('--bar', w[3]); r.setProperty('--text', w[4]); r.setProperty('--muted', w[5]); r.setProperty('--placeholder', w[6]);
+    r.setProperty('--inactive', w[5]); r.setProperty('--accent', a[1]);
+    var light = ui.wall === 2 || ui.wall === 9;
+    r.setProperty('--divider', light ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.14)');
+    var m = document.querySelector('meta[name=theme-color]'); if (m) m.content = w[3];
+  }
+  applyPalette();
+  /** The drawer's shelves in the person's order, the hidden ones left out (Settings → Appearance → Drawer). */
+  function shelvesInOrder() {
+    var byKey = {}; SHELVES.forEach(function (s) { byKey[s[2]] = s; });
+    var out = []; (ui.order || []).forEach(function (k) { if (byKey[k] && out.indexOf(byKey[k]) < 0) out.push(byKey[k]); });
+    SHELVES.forEach(function (s) { if (out.indexOf(s) < 0) out.push(s); });
+    return out.filter(function (s) { return s[2] === 'all' || (ui.hidden || []).indexOf(s[2]) < 0; });
+  }
+  // sort is remembered per shelf, newest files first until changed, like the phone (build 140)
+  function sortFor(shelf) { try { return localStorage.getItem('oto.sort.' + shelf) || 'newest'; } catch (e) { return 'newest'; } }
+  function setSortFor(shelf, v) { try { localStorage.setItem('oto.sort.' + shelf, v); } catch (e) {} }
   /** Throws away every saved copy of the app and loads it fresh from the server. */
   async function getLatest() {
     setStatus('Getting the latest version…', 0);
@@ -31,6 +65,7 @@
   var filter = { shelf: 'reading', value: null };
   try { var sf = JSON.parse(localStorage.getItem('oto.filter') || 'null'); if (sf && sf.shelf) filter = sf; } catch (e) {}
   function rememberFilter() { try { localStorage.setItem('oto.filter', JSON.stringify(filter)); } catch (e) {} }
+  if (ui.startShelf && ui.startShelf !== 'remember') filter = { shelf: ui.startShelf, value: null };
   var search = '', sort = 'recent', shown = 0;
   var local = null;          // a book opened from this computer (no Drive)
 
@@ -333,20 +368,10 @@
     }
     function count2(shelf, value) { return books.filter(function (b) { return inShelf(b, shelf, value); }).length; }
     function sep() { var s = document.createElement('div'); s.className = 'drawerSep'; d.appendChild(s); }
-    item('Reading Now', 'reading', 'reading', null);
-    item('Books & documents', 'all', 'all', null);
-    item('Videos & audio', 'media', 'media', null);
-    item('Favorites', 'star', 'favorites', null);
-    item('To Read', 'clock', 'toread', null);
-    item('Have Read', 'doneAll', 'finished', null);
-    item('Authors', 'person', 'author', null);
-    item('Series', 'series', 'series', null);
-    item('Tags', 'tag', 'tag', null);
-    item('Collections', 'collections', 'collection', null);
-    collections().forEach(function (c) { item(c.name, '', 'collection', c.name, true); });
-    item('Formats', 'layers', 'format', null);
-    item('Quotes & notes', 'notes', 'notes', null);
-    item('Trash', 'trash', 'trash', null);
+    shelvesInOrder().forEach(function (s) {
+      item(s[0], s[1], s[2], null);
+      if (s[2] === 'collection') collections().forEach(function (c) { item(c.name, '', 'collection', c.name, true); });
+    });
     sep();
     var cv = document.createElement('div'); cv.className = 'drawerItem'; cv.innerHTML = svg('convert') + '<span>CONVERTER</span>';
     cv.onclick = function () { closeDrawer(); converter(); }; d.appendChild(cv);
@@ -364,12 +389,14 @@
       recent: function (a, b) { var ao = (a.entry && a.entry.lastOpened) || 0, bo = (b.entry && b.entry.lastOpened) || 0; if (ao !== bo) return bo - ao; return b.modified - a.modified; },
       newest: function (a, b) { return b.modified - a.modified || a.title.localeCompare(b.title); },
       title: function (a, b) { return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }); },
+      titleDesc: function (a, b) { return b.title.localeCompare(a.title, undefined, { sensitivity: 'base' }); },
       author: function (a, b) { return (a.author || '￿').localeCompare(b.author || '￿', undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title); },
       rating: function (a, b) { var ar = (a.entry && a.entry.rating) || 0, br = (b.entry && b.entry.rating) || 0; if (ar !== br) return br - ar; return a.title.localeCompare(b.title); },
-    }[sort];
+    }[sortFor(filter.shelf)] || function (a, b) { return b.modified - a.modified; };
     return rows.sort(key);
   }
   function render() {
+    if (ui.openLast && !openedLast && books.length) { openedLast = true; try { var lfp = localStorage.getItem('oto.lastBook'); var lb = lfp && books.filter(function (b) { return b.fp === lfp; })[0]; if (lb) setTimeout(function () { openBook(lb); }, 50); } catch (e) {} }
     $('shelfTitle').textContent = filter.value ? filter.value : titles[filter.shelf];
     var list = $('list'); list.innerHTML = ''; shown = 0;
     if (filter.shelf === 'notes') {
@@ -586,21 +613,112 @@
     } catch (e) { setStatus('Could not convert: ' + e.message, 8000); }
   }
 
-  // ---------- settings ----------
+  // ---------- settings: the phone's sections, with what a browser can do ----------
   function settings() {
-    var html = '<h3 style="margin-top:0">Settings</h3><p class="muted">OtoReader ' + APP_VERSION + (navigator.onLine ? '' : ' · offline, showing the saved copy') + '. Signed in: ' + (Drive.signedIn() ? 'yes' : 'no') + '. Library loaded ' + (lib.loadedAt ? new Date(lib.loadedAt).toLocaleString() : 'never') + '.</p>' +
-      '<div class="row"><button class="textBtn" id="stReload">Reload from Google Drive</button><button class="textBtn" id="stUpdate">Get the latest version</button><button class="textBtn" id="stSignOut">Sign out</button></div>' +
-      '<div class="row"><button class="textBtn" id="stClientId">Change client ID</button><button class="textBtn" id="stLocal">Open a file from this computer</button></div>' +
-      '<p class="muted" style="margin-bottom:4px">On your other devices (sign in to the same Google account on each):</p>' +
-      '<div class="row"><a class="textBtn" href="OtoReader.apk" download="OtoReader.apk">Android app (APK)</a>' +
-      '<a class="textBtn" href="https://github.com/otobong77-del/otoreader-web/releases/download/desktop-latest/OtoReader-Setup.exe">Windows installer</a>' +
-      '<a class="textBtn" href="https://otobong77-del.github.io/otoreader-web/" target="_blank" rel="noopener">Web link</a></div>';
-    dialog(html, null, 'Close');
-    $('stReload').onclick = function () { $('dialog').classList.add('hidden'); loadFromDrive(true); };
-    $('stUpdate').onclick = function () { $('dialog').classList.add('hidden'); getLatest(); };
-    $('stSignOut').onclick = function () { Drive.signOut(); $('accountBtn').textContent = 'Sign in'; $('dialog').classList.add('hidden'); };
-    $('stClientId').onclick = function () { $('dialog').classList.add('hidden'); $('setup').classList.remove('hidden'); $('clientIdInput').value = Drive.clientId(); };
-    $('stLocal').onclick = function () { $('dialog').classList.add('hidden'); $('fileInput').click(); };
+    var p = $('settingsPanel');
+    function sec(t) { return '<div class="setLabel">' + t + '</div>'; }
+    function chk(id, label, on) { return '<label><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '> ' + label + '</label>'; }
+    var shelfOpts = '<option value="remember">The shelf I was on</option>' + SHELVES.map(function (sh) { return '<option value="' + sh[2] + '"' + (ui.startShelf === sh[2] ? ' selected' : '') + '>' + esc(sh[0]) + '</option>'; }).join('');
+    var html = '<div class="setHead"><button class="iconBtn" id="stBack" title="Back">&#8592;</button><h2>Settings</h2></div>' +
+      '<p class="setHint">OtoReader ' + APP_VERSION + (navigator.onLine ? '' : ' · offline, showing the saved copy') + ' · Signed in: ' + (Drive.signedIn() ? 'yes' : 'no') + ' · Library loaded ' + (lib.loadedAt ? new Date(lib.loadedAt).toLocaleString() : 'never') + '. Settings here are kept in this browser; shelves, places, stars and notes travel through Google Drive.</p>' +
+      sec('General') +
+      '<div class="setRow"><label>Start on <select id="stStart">' + shelfOpts + '</select></label></div>' +
+      '<div class="setRow">' + chk('stOpenLast', 'Open the book I was reading when the page opens', ui.openLast) + '</div>' +
+      sec('Library') +
+      '<div class="setRow"><button class="textBtn" id="stAdd">Add books from this computer…</button><button class="textBtn" id="stLocal">Open a file without adding it</button><button class="textBtn" id="stConvert">Converter</button></div>' +
+      '<p class="setHint">Sorting is chosen per shelf from the ⋮ menu (newest files first until you change it). Scanning the phone, duplicates, lost books and the ReadEra import live on the phone, which owns the files.</p>' +
+      '<div class="setRow"><span class="muted">Find books:</span><a class="textBtn" target="_blank" rel="noopener" href="https://www.amazon.com/Kindle-eBooks/b?node=154606011">Kindle store</a><a class="textBtn" target="_blank" rel="noopener" href="https://books.google.com/">Google Books</a><a class="textBtn" target="_blank" rel="noopener" href="https://www.gutenberg.org/">Project Gutenberg</a></div>' +
+      sec('Google Drive sync') +
+      '<div class="setRow"><button class="textBtn" id="stReload">Reload from Google Drive</button><button class="textBtn" id="stSignOut">' + (Drive.signedIn() ? 'Sign out' : 'Sign in') + '</button><button class="textBtn" id="stClientId">Change client ID</button></div>' +
+      '<div class="setRow"><label>While the page is open, reload from Drive <select id="stAuto"><option value="0">only when I ask</option><option value="15">every 15 minutes</option><option value="60">every hour</option><option value="240">every 4 hours</option></select></label></div>' +
+      '<p class="setHint">Changes made here (places, stars, shelves, notes) are saved to Drive a few seconds after you make them; the phone picks them up at its next sync.</p>' +
+      sec('Other devices and friends') +
+      '<div class="setRow"><a class="textBtn" href="OtoReader.apk" download="OtoReader.apk">Android app (APK)</a><a class="textBtn" href="https://github.com/otobong77-del/otoreader-web/releases/download/desktop-latest/OtoReader-Setup.exe">Windows installer</a><a class="textBtn" href="https://otobong77-del.github.io/otoreader-web/" target="_blank" rel="noopener">Web link</a></div>' +
+      '<p class="setHint">Sign in to the same Google account on each device. Friends\' libraries and the web novel chapter alerts are checked by the phone (Settings → Other devices and friends).</p>' +
+      sec('Backup') +
+      '<div class="setRow"><button class="textBtn" id="stBackup">Save a copy of the library to this computer</button><button class="textBtn" id="stRestore">Restore from a copy…</button></div>' +
+      '<p class="setHint">The copy is the library file (shelves, places, stars, collections, notes), not the book files. Restoring merges it in: a newer place or mark on a device still wins at the next sync.</p>' +
+      sec('Reading') +
+      '<div class="setRow"><label>Colours <select id="stTheme"><option value="0">Light</option><option value="1">Sepia</option><option value="2">Dark</option><option value="3">Black</option></select></label>' +
+      '<label>Font <select id="stFont"><option value="0">Book font</option><option value="1">Serif</option><option value="2">Sans-serif</option></select></label></div>' +
+      '<div class="setRow"><label>Font size <input id="stSize" type="range" min="70" max="200" step="5"> <span id="stSizeV"></span>%</label><label>Line spacing <input id="stLine" type="range" min="10" max="24" step="1"></label><label>Margins <input id="stMargin" type="range" min="8" max="120" step="4"></label></div>' +
+      '<div class="setRow">' + chk('stPaged', 'Pages (off = scrolling)', opts.paged) + chk('stJustify', 'Justify text', opts.justify) + '</div>' +
+      '<div class="setRow"><label>Read-aloud speed <input id="stRate" type="range" min="0.5" max="5" step="0.1"> <span id="stRateV"></span>×</label></div>' +
+      '<p class="setHint">Tap zones, volume keys, screen rotation and the lock are phone matters; the keyboard arrows and the slider turn pages here.</p>' +
+      sec('Appearance') +
+      '<p class="setHint">Wallpaper (background, bars and text), the same palettes as the phone:</p><div class="swatches" id="stWalls"></div>' +
+      '<p class="setHint">Accent (markings and lines):</p><div class="swatches" id="stAccents"></div>' +
+      '<p class="setHint">Drawer: untick to hide a shelf, ▲▼ to reorder.</p><div id="stDrawer"></div>' +
+      sec('Other') +
+      '<div class="setRow"><button class="textBtn" id="stUpdate">Get the latest version</button><button class="textBtn" id="stReset">Reset the settings of this browser</button></div>' +
+      '<p class="setHint">Nothing leaves this browser except what goes to your own Google Drive. The page works offline with the saved copy of the library.</p>';
+    p.innerHTML = html;
+    p.classList.remove('hidden'); $('list').classList.add('hidden'); $('sentinel').classList.add('hidden');
+    $('shelfTitle').textContent = 'Settings';
+    function close() { p.classList.add('hidden'); $('list').classList.remove('hidden'); $('sentinel').classList.remove('hidden'); render(); buildDrawer(); }
+    $('stBack').onclick = close;
+    $('stStart').onchange = function () { ui.startShelf = this.value; saveUi(); };
+    $('stOpenLast').onchange = function () { ui.openLast = this.checked; saveUi(); };
+    $('stAdd').onclick = function () { $('addInput').click(); };
+    $('stLocal').onclick = function () { $('fileInput').click(); };
+    $('stConvert').onclick = function () { close(); converter(); };
+    $('stReload').onclick = function () { close(); loadFromDrive(true); };
+    $('stSignOut').onclick = function () { if (Drive.signedIn()) { Drive.signOut(); $('accountBtn').textContent = 'Sign in'; close(); } else { close(); $('accountBtn').click(); } };
+    $('stClientId').onclick = function () { close(); $('setup').classList.remove('hidden'); $('clientIdInput').value = Drive.clientId(); };
+    $('stAuto').value = String(ui.autoReload || 0); $('stAuto').onchange = function () { ui.autoReload = +this.value; saveUi(); };
+    $('stBackup').onclick = function () {
+      var text = JSON.stringify({ books: lib.entries }, null, 1), a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = 'OtoReader-library-' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+    };
+    $('stRestore').onclick = function () { $('restoreInput').click(); };
+    $('restoreInput').onchange = function () {
+      var f = this.files[0]; this.value = ''; if (!f) return;
+      f.text().then(function (t) {
+        var got = parseLibrary(t), n = 0;
+        for (var fp in got.entries) { var e = got.entries[fp], mine = lib.entries[fp]; if (!mine || (e.updated || 0) > (mine.updated || 0)) { lib.entries[fp] = e; dirty[fp] = 1; n++; } }
+        saveDirty(); saveCache(); scheduleSave(); setStatus(n + ' entries taken from the copy; they go to Drive in a moment.', 6000);
+      }).catch(function (e) { setStatus('Could not read that file: ' + e.message, 6000); });
+    };
+    $('stTheme').value = opts.theme; $('stFont').value = opts.font; $('stSize').value = opts.size; $('stSizeV').textContent = opts.size; $('stLine').value = opts.line; $('stMargin').value = opts.margin; $('stRate').value = opts.ttsRate; $('stRateV').textContent = opts.ttsRate;
+    ['stTheme', 'stFont', 'stSize', 'stLine', 'stMargin', 'stPaged', 'stJustify', 'stRate'].forEach(function (id) { $(id).oninput = $(id).onchange = function () {
+      opts.theme = +$('stTheme').value; opts.font = +$('stFont').value; opts.size = +$('stSize').value; opts.line = +$('stLine').value; opts.margin = +$('stMargin').value; opts.paged = $('stPaged').checked; opts.justify = $('stJustify').checked; opts.ttsRate = +$('stRate').value;
+      $('stSizeV').textContent = opts.size; $('stRateV').textContent = opts.ttsRate; saveOpts();
+    }; });
+    function swatches(id, list, cur, onPick) {
+      var box = $(id); box.innerHTML = '';
+      list.forEach(function (c, i) {
+        var d = document.createElement('div'); d.className = 'swatch' + (i === cur ? ' on' : ''); d.title = c[0];
+        d.style.background = c[1]; if (c.length > 2) { d.innerHTML = '<span></span>'; d.firstChild.style.background = c[3]; }
+        d.onclick = function () { onPick(i); swatches(id, list, i, onPick); };
+        box.appendChild(d);
+      });
+    }
+    swatches('stWalls', WALLS, ui.wall, function (i) { ui.wall = i; saveUi(); applyPalette(); });
+    swatches('stAccents', ACCENTS, ui.accent, function (i) { ui.accent = i; saveUi(); applyPalette(); });
+    function drawerPrefs() {
+      var box = $('stDrawer'); box.innerHTML = '';
+      var byKey = {}; SHELVES.forEach(function (sh) { byKey[sh[2]] = sh; });
+      var order = (ui.order || []).filter(function (k) { return byKey[k]; }); SHELVES.forEach(function (sh) { if (order.indexOf(sh[2]) < 0) order.push(sh[2]); });
+      ui.order = order;
+      order.forEach(function (k, i) {
+        var sh = byKey[k], row = document.createElement('div'); row.className = 'drawerPref';
+        row.innerHTML = '<input type="checkbox"' + ((ui.hidden || []).indexOf(k) < 0 ? ' checked' : '') + (k === 'all' ? ' disabled' : '') + '><span class="name">' + esc(sh[0]) + '</span><button class="textBtn small">▲</button><button class="textBtn small">▼</button>';
+        var cb = row.children[0], up = row.children[2], down = row.children[3];
+        cb.onchange = function () { ui.hidden = (ui.hidden || []).filter(function (h) { return h !== k; }); if (!cb.checked) ui.hidden.push(k); saveUi(); buildDrawer(); };
+        up.onclick = function () { if (i > 0) { order.splice(i, 1); order.splice(i - 1, 0, k); ui.order = order; saveUi(); buildDrawer(); drawerPrefs(); } };
+        down.onclick = function () { if (i < order.length - 1) { order.splice(i, 1); order.splice(i + 1, 0, k); ui.order = order; saveUi(); buildDrawer(); drawerPrefs(); } };
+        box.appendChild(row);
+      });
+    }
+    drawerPrefs();
+    $('stUpdate').onclick = function () { close(); getLatest(); };
+    $('stReset').onclick = function () {
+      if (!confirm('Reset the look, drawer, sorting and reading settings of this browser? The library itself is untouched.')) return;
+      try { Object.keys(localStorage).forEach(function (k) { if (k === 'oto.ui' || k === 'oto.opts' || k === 'oto.filter' || k.indexOf('oto.sort') === 0) localStorage.removeItem(k); }); } catch (e) {}
+      location.reload();
+    };
+    $('main').scrollTop = 0;
   }
 
   // ---------- reader ----------
@@ -659,7 +777,9 @@
       el.onerror = function () { setStatus('The browser cannot play this file (' + b.format + '). MP4, WEBM, MP3, M4A, OGG and FLAC usually work.', 7000); };
     } catch (e) { setStatus('Could not fetch the file: ' + e.message, 7000); }
   }
+  var openedLast = false;
   async function openBook(b) {
+    try { localStorage.setItem('oto.lastBook', b.fp); } catch (e) {}
     if (isMedia(b)) { playMedia(b); return; }
     if (!b.file) { setStatus('This book has not been uploaded from the phone yet. On the phone, Settings → Sync now (with "copy book files" on).', 6000); return; }
     var ext = b.name.toLowerCase().split('.').pop();
@@ -916,12 +1036,14 @@
     $('menuBtn').onclick = openDrawer; $('scrim').onclick = closeDrawer;
     $('search').oninput = function () { search = this.value; render(); };
     $('searchBtn').onclick = function () { var s = $('search'); s.classList.toggle('hidden'); if (!s.classList.contains('hidden')) s.focus(); else { s.value = ''; search = ''; render(); } };
-    try { sort = localStorage.getItem('oto.sort') || 'recent'; } catch (e) {}
-    function markSort() { document.querySelectorAll('.sortItem').forEach(function (i) { i.classList.toggle('on', i.dataset.sort === sort); }); }
+    function markSort() { var cur = sortFor(filter.shelf); document.querySelectorAll('.sortItem').forEach(function (i) { i.classList.toggle('on', i.dataset.sort === cur); }); }
+    $('moreBtn').addEventListener('click', markSort);
     markSort();
     $('moreBtn').onclick = function (ev) { ev.stopPropagation(); $('moreMenu').classList.toggle('hidden'); };
     document.addEventListener('click', function (ev) { if (!$('moreMenu').contains(ev.target)) $('moreMenu').classList.add('hidden'); });
-    document.querySelectorAll('.sortItem').forEach(function (i) { i.onclick = function () { sort = i.dataset.sort; try { localStorage.setItem('oto.sort', sort); } catch (e) {} markSort(); $('moreMenu').classList.add('hidden'); render(); }; });
+    document.querySelectorAll('.sortItem').forEach(function (i) { i.onclick = function () { setSortFor(filter.shelf, i.dataset.sort); markSort(); $('moreMenu').classList.add('hidden'); render(); }; });
+    // Settings → Sync: reload from Drive every so often while the page is open
+    setInterval(function () { if (ui.autoReload > 0 && lib.loadedAt && Date.now() - lib.loadedAt > ui.autoReload * 60000 && navigator.onLine && Drive.signedIn() && !R.book) loadFromDrive(false, true); }, 60000);
     document.querySelectorAll('#moreMenu [data-act]').forEach(function (i) {
       i.onclick = function () {
         $('moreMenu').classList.add('hidden');

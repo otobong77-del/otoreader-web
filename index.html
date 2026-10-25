@@ -8,9 +8,9 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#005C75">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css??v=48">
-<script src="fflate.min.js??v=48"></script>
-<script src="chapters.js??v=48"></script>
+<link rel="stylesheet" href="style.css?v=49">
+<script src="fflate.min.js?v=49"></script>
+<script src="chapters.js?v=49"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -32,12 +32,13 @@
     <div class="popupItem" data-act="add">Add books from this computer…</div>
     <div class="popupItem" data-act="open">Open a file without adding it</div>
     <div class="popupSep"></div>
-    <div class="popupLabel">Sort by</div>
+    <div class="popupLabel">Sort this shelf by</div>
     <div class="popupItem sortItem" data-sort="recent">Recently read</div>
     <div class="popupItem sortItem" data-sort="newest">Newest files first</div>
-    <div class="popupItem sortItem" data-sort="title">Title</div>
-    <div class="popupItem sortItem" data-sort="author">Author</div>
-    <div class="popupItem sortItem" data-sort="rating">Rating</div>
+    <div class="popupItem sortItem" data-sort="title">Alphabetical (A–Z by title)</div>
+    <div class="popupItem sortItem" data-sort="titleDesc">Alphabetical (Z–A by title)</div>
+    <div class="popupItem sortItem" data-sort="author">Author (A–Z)</div>
+    <div class="popupItem sortItem" data-sort="rating">By rating</div>
     <div class="popupSep"></div>
     <div class="popupItem" data-act="update">Get the latest version</div>
     <div class="popupItem" data-act="settings">Settings</div>
@@ -67,6 +68,7 @@
     </section>
 
     <section id="notice" class="panel hidden"></section>
+    <section id="settingsPanel" class="panel hidden"></section>
 
     <div id="list"></div>
     <div id="sentinel"></div>
@@ -75,6 +77,7 @@
   <footer id="status" class="hidden"></footer>
   <input id="fileInput" type="file" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
   <input id="addInput" type="file" multiple accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
+  <input id="restoreInput" type="file" accept=".json,.txt" hidden>
   <input id="convInput" type="file" multiple accept=".epub,.txt,.mobi,.azw,.azw3,.docx,.fb2,.zip,.rtf,.odt,.cbz,.cbr" hidden>
   <div id="dropHint" class="hidden">Drop books here to add them to your library</div>
 </div>
@@ -126,14 +129,14 @@
 
 <div id="dialog" class="hidden"><div class="dialogBox"><div id="dialogBody"></div><div class="row right"><button id="dialogCancel" class="textBtn">Cancel</button><button id="dialogOk" class="primary">Save</button></div></div></div>
 
-<script src="config.js??v=48"></script>
-<script src="reader.bundle.js??v=48"></script>
-<script src="drive.js??v=48"></script>
-<script src="epub.js??v=48"></script>
-<script src="formats.js??v=48"></script>
-<script src="tts.js??v=48"></script>
-<script src="convert.js??v=48"></script>
-<script src="app.js??v=48"></script>
+<script src="config.js?v=49"></script>
+<script src="reader.bundle.js?v=49"></script>
+<script src="drive.js?v=49"></script>
+<script src="epub.js?v=49"></script>
+<script src="formats.js?v=49"></script>
+<script src="tts.js?v=49"></script>
+<script src="convert.js?v=49"></script>
+<script src="app.js?v=49"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").then(function (reg) { try { reg.update(); setInterval(function () { reg.update(); }, 30 * 60 * 1000); } catch (e) {} }).catch(function () {});
