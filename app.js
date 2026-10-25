@@ -2,13 +2,14 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
+  // status holds the To Read / Have Read mark; Reading Now is the entry's own `reading` flag since web 50 (status 1 is how older files spelled it)
   var STATUS = { NONE: 0, READING: 1, TO_READ: 2, FINISHED: 3 };
 
   // ---------- state ----------
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 49';
+  var APP_VERSION = 'web 50';
 
   // ---------- look and layout, the phone's choices (Settings → Appearance) ----------
   // wallpapers and accents are the phone's palettes.xml, in the same order: [name, background, card, bar, text, muted, cover placeholder]
@@ -115,7 +116,7 @@
   }
 
   function entryOf(b) {
-    if (!b.entry) { b.entry = { title: b.title, author: b.author, progress: 0, position: null, status: 0, favorite: false, lastOpened: 0, updated: 0, trashed: false, collections: [], bookmarks: [] }; lib.entries[b.fp] = b.entry; }
+    if (!b.entry) { b.entry = { title: b.title, author: b.author, progress: 0, position: null, status: 0, reading: false, favorite: false, lastOpened: 0, updated: 0, trashed: false, collections: [], bookmarks: [] }; lib.entries[b.fp] = b.entry; }
     return b.entry;
   }
   function saveDirty() { try { localStorage.setItem('oto.dirty', JSON.stringify(Object.keys(dirty))); } catch (e) {} }
@@ -178,7 +179,7 @@
     var bs = root.books || {};
     for (var fp in bs) {
       var o = bs[fp];
-      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: +o.status || 0, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, vault: !!o.vault, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [], tags: o.tags || '', rating: +o.rating || 0 };
+      out.entries[fp] = { title: o.title || '', author: o.author || '', series: o.series || '', progress: +o.progress || 0, position: o.position == null ? null : String(o.position), status: (+o.status || 0) === STATUS.READING ? STATUS.NONE : (+o.status || 0), reading: o.reading != null ? !!o.reading : (+o.status || 0) === STATUS.READING, favorite: !!o.favorite, lastOpened: +o.lastOpened || 0, updated: +o.updated || 0, trashed: !!o.trashed, vault: !!o.vault, collections: o.collections || [], bookmarks: o.bookmarks || [], notes: o.notes || [], tags: o.tags || '', rating: +o.rating || 0 };
     }
     return out;
   }
@@ -186,7 +187,7 @@
     var bs = {};
     for (var fp in entries) {
       var e = entries[fp];
-      bs[fp] = { title: e.title, author: e.author, series: e.series || '', progress: e.progress, position: e.position, status: e.status, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [], notes: e.notes || [] };
+      bs[fp] = { title: e.title, author: e.author, series: e.series || '', progress: e.progress, position: e.position, status: (e.reading && !e.status) ? STATUS.READING : e.status, reading: !!e.reading, favorite: e.favorite, lastOpened: e.lastOpened, updated: e.updated, trashed: e.trashed, collections: e.collections || [], bookmarks: e.bookmarks || [], notes: e.notes || [] };
       if (e.vault) bs[fp].vault = true;
       if (e.tags) bs[fp].tags = e.tags;
       if (e.rating) bs[fp].rating = e.rating;
@@ -341,7 +342,7 @@
     if (isMedia(b) && (shelf === 'all' || shelf === 'author' || shelf === 'series' || shelf === 'notes')) return false;
     switch (shelf) {
       case 'media': return isMedia(b);
-      case 'reading': return e.status === STATUS.READING;
+      case 'reading': return !!e.reading;
       case 'all': return true;
       case 'favorites': return !!e.favorite;
       case 'toread': return e.status === STATUS.TO_READ;
@@ -486,14 +487,14 @@
       '<label>Title <input type="text" id="edTitle" value="' + esc(b.title) + '"></label><label>Author <input type="text" id="edAuthor" value="' + esc(b.author) + '"></label>' +
       '<div class="row">' + (b.file ? '<a class="textBtn" target="_blank" rel="noopener" href="https://drive.google.com/file/d/' + b.file.id + '/view">Open in Drive</a>' : '') +
       '<button class="textBtn" id="edTrash">' + (e.trashed ? 'Restore from trash' : 'Move to Trash') + '</button>' +
-      '<button class="textBtn" id="edRemove">' + (e.status === STATUS.READING ? 'Remove from Reading Now' : '') + '</button>' +
+      '<button class="textBtn" id="edRemove">' + (e.reading ? 'Remove from Reading Now' : 'Put on Reading Now') + '</button>' +
       (b.file ? '<button class="textBtn" id="edKeep">Keep on this device (read offline)</button>' : '') + '</div>' +
       (b.file && Books.canOpen(b.name) && !/\.pdf$/i.test(b.name) ? '<div class="row">' + (!/\.epub$/i.test(b.name) ? '<button class="textBtn" id="edEpub">Convert to EPUB</button>' : '') + (!/\.docx$/i.test(b.name) ? '<button class="textBtn" id="edDocx">Convert to Word</button>' : '') + '<button class="textBtn" id="edPdf">Save as PDF (print)</button></div>' : '');
     dialog(html, function () {
       e.title = $('edTitle').value.trim() || b.title; e.author = $('edAuthor').value.trim(); b.title = e.title; b.author = e.author; touch(b); refreshRow(b, el);
     });
     $('edTrash').onclick = function () { var snap = snapshot(b); e.trashed = !e.trashed; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); if (e.trashed) offerUndo('Moved to Trash', function () { restore(b, snap); }); };
-    $('edRemove').onclick = function () { var snap = snapshot(b); e.status = STATUS.NONE; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); offerUndo('Removed from Reading Now', function () { restore(b, snap); }); };
+    $('edRemove').onclick = function () { var snap = snapshot(b), was = !!e.reading; e.reading = !was; touch(b); $('dialog').classList.add('hidden'); refreshRow(b, el); render(); if (was) offerUndo('Removed from Reading Now', function () { restore(b, snap); }); };
     if ($('edEpub')) $('edEpub').onclick = function () { convertLibraryBook(b, 'epub'); };
     if ($('edDocx')) $('edDocx').onclick = function () { convertLibraryBook(b, 'docx'); };
     if ($('edPdf')) $('edPdf').onclick = function () { convertLibraryBook(b, 'pdf'); };
@@ -863,7 +864,7 @@
     if (b.local) return;
     var e = entryOf(b);
     e.lastOpened = Date.now();
-    if (e.status === STATUS.NONE || e.status === STATUS.TO_READ) e.status = STATUS.READING;
+    e.reading = true; // on Reading Now until the person takes it off; the To Read / Have Read marks stay
     touch(b);
   }
 
@@ -933,7 +934,7 @@
     if (!R.book || R.book.local) return;
     var e = entryOf(R.book);
     e.position = R.section + ':' + f.toFixed(4); e.progress = progress;
-    if (e.status === STATUS.FINISHED && progress < 0.03) e.status = STATUS.READING; // read again from the start
+    e.reading = true;
     if (R.section === doc.spine.length - 1 && R.page >= R.pages - 1 && progress > 0.97) e.status = STATUS.FINISHED;
     if (posTimer) clearTimeout(posTimer);
     posTimer = setTimeout(function () { touch(R.book); }, 1500);
