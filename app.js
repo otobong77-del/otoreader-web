@@ -9,7 +9,7 @@
   var lib = { fileId: null, folderId: null, booksId: null, entries: {}, files: {}, loadedAt: 0 };
   var books = [];            // merged rows
   var dirty = {};            // fingerprints changed here and not yet written
-  var APP_VERSION = 'web 50';
+  var APP_VERSION = 'web 51';
 
   // ---------- look and layout, the phone's choices (Settings → Appearance) ----------
   // wallpapers and accents are the phone's palettes.xml, in the same order: [name, background, card, bar, text, muted, cover placeholder]
@@ -640,7 +640,7 @@
       '<div class="setRow"><button class="textBtn" id="stBackup">Save a copy of the library to this computer</button><button class="textBtn" id="stRestore">Restore from a copy…</button></div>' +
       '<p class="setHint">The copy is the library file (shelves, places, stars, collections, notes), not the book files. Restoring merges it in: a newer place or mark on a device still wins at the next sync.</p>' +
       sec('Reading') +
-      '<div class="setRow"><label>Colours <select id="stTheme"><option value="0">Light</option><option value="1">Sepia</option><option value="2">Dark</option><option value="3">Black</option></select></label>' +
+      '<div class="setRow"><label>Colors <select id="stTheme"><option value="0">Light</option><option value="1">Sepia</option><option value="2">Dark</option><option value="3">Black</option></select></label>' +
       '<label>Font <select id="stFont"><option value="0">Book font</option><option value="1">Serif</option><option value="2">Sans-serif</option></select></label></div>' +
       '<div class="setRow"><label>Font size <input id="stSize" type="range" min="70" max="200" step="5"> <span id="stSizeV"></span>%</label><label>Line spacing <input id="stLine" type="range" min="10" max="24" step="1"></label><label>Margins <input id="stMargin" type="range" min="8" max="120" step="4"></label></div>' +
       '<div class="setRow">' + chk('stPaged', 'Pages (off = scrolling)', opts.paged) + chk('stJustify', 'Justify text', opts.justify) + '</div>' +

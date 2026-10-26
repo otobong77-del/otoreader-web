@@ -8,9 +8,9 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#005C75">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=50">
-<script src="fflate.min.js?v=50"></script>
-<script src="chapters.js?v=50"></script>
+<link rel="stylesheet" href="style.css?v=51">
+<script src="fflate.min.js?v=51"></script>
+<script src="chapters.js?v=51"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -89,7 +89,7 @@
     <div class="titles"><div id="rTitle"></div><div id="rChapter" class="muted"></div></div>
     <button id="ttsBtn" class="iconBtn" title="Read aloud">&#127911;</button>
     <button id="tocBtn" class="iconBtn" title="Contents">&#9776;</button>
-    <button id="displayBtn" class="iconBtn" title="Text and colours">Aa</button>
+    <button id="displayBtn" class="iconBtn" title="Text and colors">Aa</button>
   </header>
   <div id="frameWrap">
     <iframe id="frame" title="Book"></iframe>
@@ -107,8 +107,8 @@
   <aside id="toc" class="side hidden"><div class="sideHead">Contents <button class="iconBtn closeSide">&times;</button></div><div id="tocItems"></div></aside>
 
   <aside id="display" class="side hidden">
-    <div class="sideHead">Text and colours <button class="iconBtn closeSide">&times;</button></div>
-    <label>Colours
+    <div class="sideHead">Text and colors <button class="iconBtn closeSide">&times;</button></div>
+    <label>Colors
       <select id="optTheme"><option value="0">Light</option><option value="1">Sepia</option><option value="2">Dark</option><option value="3">Black</option></select></label>
     <label>Font size <input id="optSize" type="range" min="70" max="200" step="5"> <span id="optSizeV"></span>%</label>
     <label>Font <select id="optFont"><option value="0">Book font</option><option value="1">Serif</option><option value="2">Sans-serif</option></select></label>
@@ -129,14 +129,14 @@
 
 <div id="dialog" class="hidden"><div class="dialogBox"><div id="dialogBody"></div><div class="row right"><button id="dialogCancel" class="textBtn">Cancel</button><button id="dialogOk" class="primary">Save</button></div></div></div>
 
-<script src="config.js?v=50"></script>
-<script src="reader.bundle.js?v=50"></script>
-<script src="drive.js?v=50"></script>
-<script src="epub.js?v=50"></script>
-<script src="formats.js?v=50"></script>
-<script src="tts.js?v=50"></script>
-<script src="convert.js?v=50"></script>
-<script src="app.js?v=50"></script>
+<script src="config.js?v=51"></script>
+<script src="reader.bundle.js?v=51"></script>
+<script src="drive.js?v=51"></script>
+<script src="epub.js?v=51"></script>
+<script src="formats.js?v=51"></script>
+<script src="tts.js?v=51"></script>
+<script src="convert.js?v=51"></script>
+<script src="app.js?v=51"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").then(function (reg) { try { reg.update(); setInterval(function () { reg.update(); }, 30 * 60 * 1000); } catch (e) {} }).catch(function () {});
